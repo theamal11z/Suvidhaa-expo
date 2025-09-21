@@ -34,7 +34,7 @@ export default function LoginScreen() {
     setTimeout(() => {
       setIsLoading(false);
       Alert.alert('Success', 'Login successful!', [
-        { text: 'OK', onPress: () => router.replace('/(tabs)') }
+        { text: 'OK', onPress: () => router.push('/(tabs)') }
       ]);
     }, 2000);
   };
