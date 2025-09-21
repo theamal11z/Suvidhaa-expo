@@ -55,12 +55,12 @@ export default function OnboardingScreen() {
         animated: true,
       });
     } else {
-      router.replace('/login');
+      router.push('/login');
     }
   };
 
   const handleSkip = () => {
-    router.replace('/login');
+    router.push('/login');
   };
 
   const handlePrevious = () => {
