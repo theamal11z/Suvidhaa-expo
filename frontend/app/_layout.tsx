@@ -12,7 +12,8 @@ export default function RootLayout() {
         <Stack.Screen name="onboarding" />
         <Stack.Screen name="login" />
         <Stack.Screen name="signup" />
-        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="test-home" />
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="understand" />
         <Stack.Screen name="ask-suggest" />
         <Stack.Screen name="track-progress" />
