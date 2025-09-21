@@ -32,7 +32,7 @@ export default function SplashScreen() {
 
     // Navigate to onboarding after 3 seconds
     const timer = setTimeout(() => {
-      router.replace('/onboarding');
+      router.push('/onboarding');
     }, 3000);
 
     return () => clearTimeout(timer);
