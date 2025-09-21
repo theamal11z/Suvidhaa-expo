@@ -56,7 +56,7 @@ export default function SignupScreen() {
     setTimeout(() => {
       setIsLoading(false);
       Alert.alert('Success', 'Account created successfully!', [
-        { text: 'OK', onPress: () => router.replace('/(tabs)') }
+        { text: 'OK', onPress: () => router.push('/(tabs)') }
       ]);
     }, 2000);
   };
