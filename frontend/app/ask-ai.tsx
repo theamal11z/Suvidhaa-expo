@@ -50,7 +50,7 @@ export default function AskAIScreen() {
         if (mapped.length === 0) {
           mapped.push({
             id: 'welcome',
-            text: "Hello! I'm your AI assistant for government services. I can help you understand policies, find information, and guide you through various government processes. What would you like to know?",
+            text: "Hello! I'm your legal advisor and government services assistant. I specialize in helping Indian citizens navigate government processes, understand policies, and handle legal documentation.\n\nI learn about you over time to provide personalized advice. To get started, could you tell me a bit about what you need help with today?",
             isUser: false,
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           });
@@ -60,7 +60,7 @@ export default function AskAIScreen() {
         // Fallback welcome message if schema not ready yet
         setChatMessages([{
           id: 'welcome',
-          text: "Hello! I'm your AI assistant for government services. I can help you understand policies, find information, and guide you through various government processes. What would you like to know?",
+          text: "Hello! I'm your legal advisor and government services assistant. I specialize in helping Indian citizens navigate government processes, understand policies, and handle legal documentation.\n\nI learn about you over time to provide personalized advice. To get started, could you tell me a bit about what you need help with today?",
           isUser: false,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         }]);
@@ -70,10 +70,12 @@ export default function AskAIScreen() {
   }, []);
 
   const quickQuestions = [
-    'How to apply for passport?',
-    'What are the benefits of Ayushman Bharat?',
-    'How to register for GST?',
-    'What is the process for PAN card?',
+    'I need help with passport application',
+    'Tell me about Ayushman Bharat benefits', 
+    'I want to register for GST',
+    'How do I get a new PAN card?',
+    'I have a property-related question',
+    'Can you help with income tax filing?',
   ];
 
   const handleSendMessage = async () => {
@@ -110,7 +112,7 @@ export default function AskAIScreen() {
       console.error('AI Assistant Error:', e);
       setChatMessages(prev => [...prev, {
         id: `err-${Date.now()}`,
-        text: 'Sorry, I encountered an issue processing your request. Please try again.',
+        text: 'I apologize, but I\'m having trouble connecting to my knowledge base right now. Please try asking your question again, or contact support if the issue persists.',
         isUser: false,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       }]);
@@ -140,8 +142,8 @@ export default function AskAIScreen() {
           <Text style={styles.title}>AI Assistant</Text>
           <Text style={styles.subtitle}>Government Services Helper</Text>
         </View>
-        <TouchableOpacity style={styles.menuButton}>
-          <Ionicons name="ellipsis-vertical" size={20} color="#6b7280" />
+        <TouchableOpacity style={styles.menuButton} onPress={() => router.push('/ai-memory')}>
+          <Ionicons name="brain" size={20} color="#6b7280" />
         </TouchableOpacity>
       </View>
 
