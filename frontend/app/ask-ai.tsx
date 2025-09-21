@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -13,9 +13,11 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { getOrCreateConversation, listMessages, sendMessage, generateAIReply, AIMessage } from '../lib/ai';
 
-interface ChatMessage {
-  id: number;
+interface ChatMessageUI {
+  id: string;
   text: string;
   isUser: boolean;
   timestamp: string;
@@ -23,16 +25,49 @@ interface ChatMessage {
 
 export default function AskAIScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [message, setMessage] = useState('');
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
-    {
-      id: 1,
-      text: 'Hello! I\'m your AI assistant for government services. I can help you understand policies, find information, and guide you through various government processes. What would you like to know?',
-      isUser: false,
-      timestamp: '10:30 AM',
-    },
-  ]);
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [chatMessages, setChatMessages] = useState<ChatMessageUI[]>([]);
   const [isTyping, setIsTyping] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const conv = await getOrCreateConversation('Assistant Chat');
+        if (!mounted) return;
+        setConversationId(conv.id);
+        const msgs = await listMessages(conv.id);
+        if (!mounted) return;
+        const mapped: ChatMessageUI[] = (msgs || []).map((m: AIMessage) => ({
+          id: m.id,
+          text: m.content,
+          isUser: m.role === 'user',
+          timestamp: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        }));
+        if (mapped.length === 0) {
+          mapped.push({
+            id: 'welcome',
+            text: "Hello! I'm your AI assistant for government services. I can help you understand policies, find information, and guide you through various government processes. What would you like to know?",
+            isUser: false,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          });
+        }
+        setChatMessages(mapped);
+      } catch (e) {
+        // Fallback welcome message if schema not ready yet
+        setChatMessages([{
+          id: 'welcome',
+          text: "Hello! I'm your AI assistant for government services. I can help you understand policies, find information, and guide you through various government processes. What would you like to know?",
+          isUser: false,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        }]);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
 
   const quickQuestions = [
     'How to apply for passport?',
@@ -41,50 +76,52 @@ export default function AskAIScreen() {
     'What is the process for PAN card?',
   ];
 
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (!message.trim()) return;
-
-    const userMessage: ChatMessage = {
-      id: chatMessages.length + 1,
-      text: message,
+    const text = message;
+    setMessage('');
+    const uiMsg: ChatMessageUI = {
+      id: `local-${Date.now()}`,
+      text,
       isUser: true,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
-
-    setChatMessages(prev => [...prev, userMessage]);
-    setMessage('');
+    setChatMessages(prev => [...prev, uiMsg]);
     setIsTyping(true);
-
-    // Simulate AI response
-    setTimeout(() => {
-      const aiResponse: ChatMessage = {
-        id: chatMessages.length + 2,
-        text: getAIResponse(message),
+    try {
+      let convId = conversationId;
+      if (!convId) {
+        const conv = await getOrCreateConversation('Assistant Chat');
+        convId = conv.id;
+        setConversationId(convId);
+      }
+      // Persist user message
+      await sendMessage(convId!, text);
+      // Generate and persist assistant reply via NVIDIA
+      const reply = await generateAIReply(convId!, text);
+      const uiReply: ChatMessageUI = {
+        id: reply.id,
+        text: reply.content,
+        isUser: false,
+        timestamp: new Date(reply.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+      setChatMessages(prev => [...prev, uiReply]);
+    } catch (e) {
+      console.error('AI Assistant Error:', e);
+      setChatMessages(prev => [...prev, {
+        id: `err-${Date.now()}`,
+        text: 'Sorry, I encountered an issue processing your request. Please try again.',
         isUser: false,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      };
-      setChatMessages(prev => [...prev, aiResponse]);
+      }]);
+    } finally {
       setIsTyping(false);
-    }, 2000);
+      // Auto-scroll
+      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+    }
   };
 
-  const getAIResponse = (userMessage: string): string => {
-    const lowerMessage = userMessage.toLowerCase();
-    
-    if (lowerMessage.includes('passport')) {
-      return 'To apply for a passport:\n\n1. Visit the Passport Seva website (passportindia.gov.in)\n2. Register and fill the online application\n3. Pay the fee online\n4. Book an appointment at PSK/PSP\n5. Visit with required documents\n\nRequired documents:\n• Proof of address\n• Proof of date of birth\n• Identity proof\n\nProcessing time: 30-45 days for normal processing, 7-15 days for Tatkal.';
-    }
-    
-    if (lowerMessage.includes('ayushman') || lowerMessage.includes('health')) {
-      return 'Ayushman Bharat provides:\n\n• Free health insurance up to ₹5 lakh per family per year\n• Coverage for 1,400+ medical packages\n• Cashless treatment at empaneled hospitals\n• Pre and post-hospitalization expenses covered\n\nEligibility is based on SECC 2011 data. You can check your eligibility at mera.pmjay.gov.in or visit Common Service Centers.';
-    }
-    
-    if (lowerMessage.includes('gst')) {
-      return 'GST Registration process:\n\n1. Visit the GST portal (gst.gov.in)\n2. Fill Form GST REG-01\n3. Upload required documents\n4. Verify through Aadhaar/EVC\n5. Submit application\n\nRequired documents:\n• PAN card\n• Aadhaar card\n• Business registration proof\n• Bank account details\n• Digital signature (if applicable)\n\nRegistration is mandatory for businesses with turnover > ₹20 lakh (₹10 lakh for NE states).';
-    }
-    
-    return 'I understand you\'re asking about government services. While I don\'t have specific information about that topic right now, I recommend:\n\n1. Visiting the official government portal (india.gov.in)\n2. Checking your state government website\n3. Visiting the nearest Common Service Center\n4. Calling the citizen helpline: 14444\n\nIs there anything else I can help you with regarding government policies or services?';
-  };
+  // Static fallback logic removed in favor of real LLM reply
 
   const handleQuickQuestion = (question: string) => {
     setMessage(question);
@@ -95,7 +132,7 @@ export default function AskAIScreen() {
       <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
       
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color="#111827" />
         </TouchableOpacity>
@@ -117,6 +154,7 @@ export default function AskAIScreen() {
           style={styles.messagesContainer}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.messagesContent}
+          ref={scrollRef}
         >
           {chatMessages.map((msg) => (
             <View
@@ -128,7 +166,7 @@ export default function AskAIScreen() {
             >
               {!msg.isUser && (
                 <View style={styles.aiAvatar}>
-                  <Ionicons name="robot" size={20} color="#ffffff" />
+                  <Ionicons name="sparkles" size={20} color="#ffffff" />
                 </View>
               )}
               
@@ -164,13 +202,13 @@ export default function AskAIScreen() {
           {isTyping && (
             <View style={[styles.messageContainer, styles.aiMessageContainer]}>
               <View style={styles.aiAvatar}>
-                <Ionicons name="robot" size={20} color="#ffffff" />
+                <Ionicons name="sparkles" size={20} color="#ffffff" />
               </View>
               <View style={[styles.messageBubble, styles.aiMessage]}>
                 <View style={styles.typingIndicator}>
-                  <View style={[styles.typingDot, { animationDelay: '0ms' }]} />
-                  <View style={[styles.typingDot, { animationDelay: '150ms' }]} />
-                  <View style={[styles.typingDot, { animationDelay: '300ms' }]} />
+                  <View style={styles.typingDot} />
+                  <View style={styles.typingDot} />
+                  <View style={styles.typingDot} />
                 </View>
               </View>
             </View>

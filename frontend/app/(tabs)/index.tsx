@@ -12,11 +12,15 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNotificationCount } from '@/lib/hooks/useNotificationCount';
 
 const { width } = Dimensions.get('window');
 
 export default function HomeScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { unreadCount } = useNotificationCount();
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -24,6 +28,7 @@ export default function HomeScreen() {
     if (hour < 18) return 'Good afternoon';
     return 'Good evening';
   };
+
 
   const actionCards = [
     {
@@ -61,18 +66,25 @@ export default function HomeScreen() {
       <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         {/* Header */}
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: insets.top + 12 }] }>
           <View style={styles.headerLeft}>
             <Text style={styles.greeting}>{getGreeting()}, Citizen!</Text>
             <Text style={styles.subtitle}>How can we help you today?</Text>
           </View>
           <View style={styles.headerRight}>
-            <View style={styles.notificationBadge}>
+            <TouchableOpacity 
+              style={styles.notificationBadge}
+              onPress={() => router.push('/(tabs)/notifications')}
+            >
               <Ionicons name="notifications" size={24} color="#6b7280" />
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>5</Text>
-              </View>
-            </View>
+              {unreadCount > 0 && (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>
+                    {unreadCount > 99 ? '99+' : unreadCount.toString()}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
           </View>
         </View>
 

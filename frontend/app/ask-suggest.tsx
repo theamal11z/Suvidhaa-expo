@@ -12,31 +12,53 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { submitQuestion, submitSuggestion } from '../lib/qa';
 
 export default function AskSuggestScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState('ask');
   const [questionText, setQuestionText] = useState('');
   const [suggestionText, setSuggestionText] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmitQuestion = () => {
+  const handleSubmitQuestion = async () => {
     if (!questionText.trim()) {
       Alert.alert('Error', 'Please enter your question');
       return;
     }
-    
-    Alert.alert('Success', 'Your question has been submitted! You will receive a response within 24-48 hours.');
-    setQuestionText('');
+    try {
+      setSubmitting(true);
+      const row = await submitQuestion(questionText);
+      Alert.alert('Success', 'Your question has been submitted!', [
+        { text: 'OK' }
+      ]);
+      setQuestionText('');
+    } catch (e: any) {
+      console.error(e);
+      Alert.alert('Submission failed', e?.message ?? 'Unknown error');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const handleSubmitSuggestion = () => {
+  const handleSubmitSuggestion = async () => {
     if (!suggestionText.trim()) {
       Alert.alert('Error', 'Please enter your suggestion');
       return;
     }
-    
-    Alert.alert('Success', 'Thank you for your suggestion! It will be reviewed by the relevant department.');
-    setSuggestionText('');
+    try {
+      setSubmitting(true);
+      const row = await submitSuggestion(suggestionText);
+      Alert.alert('Success', 'Thank you for your suggestion!');
+      setSuggestionText('');
+    } catch (e: any) {
+      console.error(e);
+      Alert.alert('Submission failed', e?.message ?? 'Unknown error');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const recentQuestions = [
@@ -74,7 +96,7 @@ export default function AskSuggestScreen() {
       <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
       
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color="#111827" />
         </TouchableOpacity>
@@ -134,9 +156,9 @@ export default function AskSuggestScreen() {
                 placeholderTextColor="#9ca3af"
               />
               
-              <TouchableOpacity style={styles.submitButton} onPress={handleSubmitQuestion}>
+              <TouchableOpacity style={styles.submitButton} onPress={handleSubmitQuestion} disabled={submitting}>
                 <Ionicons name="send" size={20} color="#ffffff" />
-                <Text style={styles.submitButtonText}>Submit Question</Text>
+                <Text style={styles.submitButtonText}>{submitting ? 'Submitting…' : 'Submit Question'}</Text>
               </TouchableOpacity>
             </View>
 
@@ -199,9 +221,9 @@ export default function AskSuggestScreen() {
                 placeholderTextColor="#9ca3af"
               />
               
-              <TouchableOpacity style={styles.submitButton} onPress={handleSubmitSuggestion}>
+              <TouchableOpacity style={styles.submitButton} onPress={handleSubmitSuggestion} disabled={submitting}>
                 <Ionicons name="send" size={20} color="#ffffff" />
-                <Text style={styles.submitButtonText}>Submit Feedback</Text>
+                <Text style={styles.submitButtonText}>{submitting ? 'Submitting…' : 'Submit Feedback'}</Text>
               </TouchableOpacity>
             </View>
 

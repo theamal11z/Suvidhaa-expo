@@ -14,9 +14,12 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { supabase } from '../lib/supabase';
 
 export default function SignupScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [formData, setFormData] = useState({
     fullName: '',
     email: '',
@@ -33,7 +36,7 @@ export default function SignupScreen() {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleSignup = () => {
+  const handleSignup = async () => {
     if (!formData.fullName.trim() || !formData.email.trim() || !formData.phone.trim() || 
         !formData.password.trim() || !formData.confirmPassword.trim()) {
       Alert.alert('Error', 'Please fill in all fields');
@@ -50,15 +53,30 @@ export default function SignupScreen() {
       return;
     }
 
-    setIsLoading(true);
-    
-    // Simulate signup process
-    setTimeout(() => {
+    try {
+      setIsLoading(true);
+      const { data, error } = await supabase.auth.signUp({
+        email: formData.email.trim(),
+        password: formData.password.trim(),
+        options: {
+          data: {
+            full_name: formData.fullName.trim(),
+            phone: formData.phone.trim(),
+          },
+        },
+      });
+      if (error) throw error;
+
+      // If email confirmation is enabled, session will be null until confirmed
+      if (!data.session) {
+        Alert.alert('Verify your email', 'We have sent a verification link to your email. Please confirm to sign in.');
+      }
+      // Auth listener in _layout will handle navigation once session exists
+    } catch (e: any) {
+      Alert.alert('Signup failed', e?.message ?? 'Unknown error');
+    } finally {
       setIsLoading(false);
-      Alert.alert('Success', 'Account created successfully!', [
-        { text: 'OK', onPress: () => router.push('/(tabs)') }
-      ]);
-    }, 2000);
+    }
   };
 
   const handleSocialSignup = (provider: string) => {
@@ -74,7 +92,7 @@ export default function SignupScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         {/* Header */}
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: Math.max(20, insets.top + 12) }]}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
             <Ionicons name="arrow-back" size={24} color="#111827" />
           </TouchableOpacity>

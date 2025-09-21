@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -10,11 +10,45 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { supabase } from '../lib/supabase';
 
 const { width } = Dimensions.get('window');
 
 export default function Index() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const [notificationCount, setNotificationCount] = useState(0);
+
+  useEffect(() => {
+    fetchNotificationCount();
+  }, []);
+
+  const fetchNotificationCount = async () => {
+    try {
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setNotificationCount(0);
+        return;
+      }
+
+      const { count, error } = await supabase
+        .from('notifications')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .eq('read', false);
+      
+      if (error) {
+        console.warn('Error fetching notification count:', error);
+        return;
+      }
+      
+      setNotificationCount(count || 0);
+    } catch (err) {
+      console.warn('Failed to fetch notifications:', err);
+    }
+  };
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -59,18 +93,23 @@ export default function Index() {
       <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
       
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <View style={styles.headerLeft}>
           <Text style={styles.greeting}>{getGreeting()}, Citizen!</Text>
           <Text style={styles.subtitle}>How can we help you today?</Text>
         </View>
         <View style={styles.headerRight}>
-          <View style={styles.notificationBadge}>
+          <TouchableOpacity 
+            style={styles.notificationBadge}
+            onPress={() => router.push('/(tabs)/notifications')}
+          >
             <Ionicons name="notifications" size={24} color="#6b7280" />
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>5</Text>
-            </View>
-          </View>
+            {notificationCount > 0 && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{notificationCount > 99 ? '99+' : notificationCount}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -114,15 +153,15 @@ export default function Index() {
           <Ionicons name="home" size={24} color="#2563eb" />
           <Text style={[styles.navText, { color: '#2563eb' }]}>Home</Text>
         </View>
-        <TouchableOpacity style={styles.navItem} onPress={() => router.push('/login')}>
+        <TouchableOpacity style={styles.navItem} onPress={() => router.push('/(tabs)/policies')}>
           <Ionicons name="document-outline" size={24} color="#9ca3af" />
           <Text style={styles.navText}>Policies</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.navItem} onPress={() => router.push('/onboarding')}>
+        <TouchableOpacity style={styles.navItem} onPress={() => router.push('/(tabs)/watchlist')}>
           <Ionicons name="bookmark-outline" size={24} color="#9ca3af" />
           <Text style={styles.navText}>Watchlist</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.navItem} onPress={() => router.push('/splash')}>
+        <TouchableOpacity style={styles.navItem} onPress={() => router.push('/(tabs)/profile')}>
           <Ionicons name="person-outline" size={24} color="#9ca3af" />
           <Text style={styles.navText}>Profile</Text>
         </TouchableOpacity>

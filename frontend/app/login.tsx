@@ -14,29 +14,35 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { supabase } from '../lib/supabase';
 
 export default function LoginScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
       Alert.alert('Error', 'Please fill in all fields');
       return;
     }
-
-    setIsLoading(true);
-    
-    // Simulate login process
-    setTimeout(() => {
+    try {
+      setIsLoading(true);
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password: password.trim(),
+      });
+      if (error) throw error;
+      // Router redirection handled by auth listener in _layout
+    } catch (e: any) {
+      Alert.alert('Login failed', e?.message ?? 'Unknown error');
+    } finally {
       setIsLoading(false);
-      Alert.alert('Success', 'Login successful!', [
-        { text: 'OK', onPress: () => router.push('/(tabs)') }
-      ]);
-    }, 2000);
+    }
   };
 
   const handleSocialLogin = (provider: string) => {
@@ -57,7 +63,7 @@ export default function LoginScreen() {
           contentContainerStyle={styles.scrollContent}
         >
           {/* Header */}
-          <View style={styles.header}>
+          <View style={[styles.header, { paddingTop: Math.max(40, insets.top + 16) }]}>
             <View style={styles.logoContainer}>
               <Ionicons name="shield-checkmark" size={60} color="#2563eb" />
             </View>

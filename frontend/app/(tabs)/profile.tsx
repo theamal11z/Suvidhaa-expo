@@ -10,10 +10,23 @@ import {
   Switch,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useEffect, useState } from 'react';
+import { supabase } from '../../lib/supabase';
 
 export default function ProfileScreen() {
+  const insets = useSafeAreaInsets();
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [userName, setUserName] = useState<string | null>(null);
   const [notificationsEnabled, setNotificationsEnabled] = React.useState(true);
   const [darkModeEnabled, setDarkModeEnabled] = React.useState(false);
+  
+  // User statistics
+  const [userStats, setUserStats] = useState({
+    queries: 0,
+    resolved: 0,
+    policies: 0
+  });
 
   const profileSections = [
     {
@@ -54,12 +67,49 @@ export default function ProfileScreen() {
     },
   ];
 
+  useEffect(() => {
+    fetchUserData();
+  }, []);
+
+  const fetchUserData = async () => {
+    try {
+      // Get user basic info
+      const { data } = await supabase.auth.getUser();
+      const user = data.user;
+      setUserEmail(user?.email ?? null);
+      // @ts-ignore metadata
+      setUserName((user?.user_metadata as any)?.full_name ?? null);
+
+      if (user) {
+        // Fetch user statistics
+        const [questionsResult, ticketsResult, watchlistResult] = await Promise.allSettled([
+          supabase.from('questions').select('*', { count: 'exact', head: true }).eq('user_id', user.id),
+          supabase.from('tickets').select('*', { count: 'exact', head: true }).eq('user_id', user.id).eq('status', 'resolved'),
+          supabase.from('watchlist').select('*', { count: 'exact', head: true }).eq('user_id', user.id).eq('target_type', 'policy')
+        ]);
+
+        setUserStats({
+          queries: questionsResult.status === 'fulfilled' ? (questionsResult.value.count || 0) : 0,
+          resolved: ticketsResult.status === 'fulfilled' ? (ticketsResult.value.count || 0) : 0,
+          policies: watchlistResult.status === 'fulfilled' ? (watchlistResult.value.count || 0) : 0
+        });
+      }
+    } catch (error) {
+      console.warn('Error fetching user data:', error);
+    }
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    // Nav handled by _layout auth listener
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
       
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 12 }] }>
         <Text style={styles.title}>Profile</Text>
         <TouchableOpacity style={styles.settingsButton}>
           <Ionicons name="settings-outline" size={24} color="#2563eb" />
@@ -71,14 +121,19 @@ export default function ProfileScreen() {
         <View style={styles.userCard}>
           <View style={styles.avatarContainer}>
             <View style={styles.avatar}>
-              <Text style={styles.avatarText}>RC</Text>
+              <Text style={styles.avatarText}>
+                {userName ? userName.split(' ').map(n => n[0]).join('').toUpperCase() : 
+                 userEmail ? userEmail.substring(0, 2).toUpperCase() : 'C'}
+              </Text>
             </View>
             <View style={styles.onlineIndicator} />
           </View>
           
           <View style={styles.userInfo}>
-            <Text style={styles.userName}>Rahul Citizen</Text>
-            <Text style={styles.userEmail}>rahul.citizen@email.com</Text>
+            <Text style={styles.userName}>{userName ?? 'Citizen'}</Text>
+            {userEmail ? (
+              <Text style={styles.userEmail}>{userEmail}</Text>
+            ) : null}
             <Text style={styles.userLocation}>📍 New Delhi, India</Text>
           </View>
           
@@ -90,15 +145,15 @@ export default function ProfileScreen() {
         {/* Stats Cards */}
         <View style={styles.statsContainer}>
           <View style={styles.statItem}>
-            <Text style={styles.statNumber}>24</Text>
+            <Text style={styles.statNumber}>{userStats.queries}</Text>
             <Text style={styles.statLabel}>Queries Raised</Text>
           </View>
           <View style={styles.statItem}>
-            <Text style={styles.statNumber}>18</Text>
+            <Text style={styles.statNumber}>{userStats.resolved}</Text>
             <Text style={styles.statLabel}>Issues Resolved</Text>
           </View>
           <View style={styles.statItem}>
-            <Text style={styles.statNumber}>6</Text>
+            <Text style={styles.statNumber}>{userStats.policies}</Text>
             <Text style={styles.statLabel}>Policies Tracked</Text>
           </View>
         </View>
@@ -145,7 +200,7 @@ export default function ProfileScreen() {
         ))}
 
         {/* Logout Button */}
-        <TouchableOpacity style={styles.logoutButton}>
+        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
           <Ionicons name="log-out-outline" size={20} color="#ef4444" />
           <Text style={styles.logoutText}>Logout</Text>
         </TouchableOpacity>

@@ -12,54 +12,99 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import * as DocumentPicker from 'expo-document-picker';
+import { uploadToCloudinary } from '../lib/cloudinary';
+import { supabase } from '../lib/supabase';
+import { insertDocument, insertSummary } from '../lib/db';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function UnderstandScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [documentUrl, setDocumentUrl] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [summary, setSummary] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [uploadedUrl, setUploadedUrl] = useState<string | null>(null);
+  const [pickedName, setPickedName] = useState<string | null>(null);
 
-  const handleDocumentAnalysis = () => {
-    if (!documentUrl.trim()) {
+  const handlePickAndUpload = async () => {
+    try {
+      setUploading(true);
+      setUploadedUrl(null);
+      setPickedName(null);
+      const res = await DocumentPicker.getDocumentAsync({
+        type: ['application/pdf', '*/*'],
+        multiple: false,
+        copyToCacheDirectory: true,
+      });
+      if (res.canceled || !res.assets?.[0]) {
+        setUploading(false);
+        return;
+      }
+      const asset = res.assets[0];
+      setPickedName(asset.name || 'document');
+
+      const uploadRes = await uploadToCloudinary({
+        uri: asset.uri,
+        name: asset.name ?? 'upload',
+        type: asset.mimeType ?? 'application/octet-stream',
+      });
+      setUploadedUrl(uploadRes.secure_url);
+      Alert.alert('Upload complete', 'File uploaded to Cloudinary successfully.');
+    } catch (e: any) {
+      console.error(e);
+      Alert.alert('Upload failed', e?.message ?? 'Unknown error');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDocumentAnalysis = async () => {
+    const url = documentUrl.trim() || uploadedUrl;
+    if (!url) {
       Alert.alert('Error', 'Please enter a document URL or upload a document');
       return;
     }
 
-    setIsAnalyzing(true);
-    
-    // Simulate analysis with mock data
-    setTimeout(() => {
-      setSummary(`
-**Policy Summary: Digital India Initiative**
+    try {
+      setIsAnalyzing(true);
+      setSummary('');
+      let documentId: string | null = null;
+      // Try to save the document reference first (best-effort)
+      try {
+        const doc = await insertDocument({ url, type: 'pdf', cloudinary_public_id: null });
+        documentId = doc.id;
+      } catch (e) {
+        // Non-fatal if schema isn't ready yet
+        console.warn('insertDocument skipped or failed:', e);
+      }
+      // Call the NVIDIA proxy function via Supabase Edge Functions
+      const { data, error } = await supabase.functions.invoke('llm-proxy', {
+        body: {
+          prompt: `Summarize this document succinctly for a citizen audience and list key points. Document: ${url}`,
+          temperature: 0.2,
+          max_tokens: 700,
+        },
+      });
+      if (error) throw error;
 
-**Key Points:**
-• Aims to transform India into a digitally empowered society
-• Focus on digital infrastructure, governance, and services
-• Target to provide digital services to all citizens
-• Emphasis on digital literacy and skill development
+      // NVIDIA chat completion style response
+      const content = data?.choices?.[0]?.message?.content ?? data?.result ?? JSON.stringify(data);
+      setSummary(String(content));
 
-**Main Objectives:**
-1. Digital Infrastructure as Core Utility
-2. Governance & Services on Demand
-3. Digital Empowerment of Citizens
-
-**Timeline:** 2015-2025
-
-**Budget Allocation:** ₹1,13,000 crores
-
-**Current Status:** 
-- 75% of planned digital infrastructure completed
-- Over 50 crore citizens enrolled in digital services
-- 95% government services available online
-
-**Impact:**
-- Increased transparency in governance
-- Reduced corruption through digital processes
-- Enhanced accessibility for rural populations
-- Boost to digital economy and startups
-      `);
+      // Try to persist summary (best-effort)
+      try {
+        await insertSummary({ document_id: documentId, summary_text: String(content) });
+      } catch (e) {
+        console.warn('insertSummary skipped or failed:', e);
+      }
+    } catch (e: any) {
+      console.error(e);
+      Alert.alert('Analysis failed', e?.message ?? 'Unknown error');
+    } finally {
       setIsAnalyzing(false);
-    }, 3000);
+    }
   };
 
   const quickTopics = [
@@ -76,7 +121,7 @@ export default function UnderstandScreen() {
       <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
       
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color="#111827" />
         </TouchableOpacity>
@@ -99,10 +144,16 @@ export default function UnderstandScreen() {
           <Text style={styles.sectionTitle}>Add Document</Text>
           
           <View style={styles.uploadOptions}>
-            <TouchableOpacity style={styles.uploadButton}>
+            <TouchableOpacity style={styles.uploadButton} onPress={handlePickAndUpload} disabled={uploading}>
               <Ionicons name="cloud-upload" size={24} color="#2563eb" />
-              <Text style={styles.uploadText}>Upload PDF</Text>
+              <Text style={styles.uploadText}>{uploading ? 'Uploading…' : 'Upload PDF'}</Text>
             </TouchableOpacity>
+            {pickedName || uploadedUrl ? (
+              <Text style={{ textAlign: 'center', color: '#374151', marginBottom: 8 }}>
+                {pickedName ? `Selected: ${pickedName}` : null}
+                {uploadedUrl ? `\nUploaded to: ${uploadedUrl}` : null}
+              </Text>
+            ) : null}
             
             <Text style={styles.orText}>or</Text>
             

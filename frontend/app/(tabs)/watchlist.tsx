@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -9,41 +9,93 @@ import {
   StatusBar,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { supabase } from '../../lib/supabase';
 
-const mockWatchlistItems = [
-  {
-    id: 1,
-    title: 'Education Policy Reform',
-    type: 'Policy Update',
-    progress: 75,
-    lastUpdate: '2 days ago',
-    status: 'In Progress',
-  },
-  {
-    id: 2,
-    title: 'Road Infrastructure Project',
-    type: 'Public Works',
-    progress: 45,
-    lastUpdate: '1 week ago',
-    status: 'Pending Review',
-  },
-  {
-    id: 3,
-    title: 'Healthcare Accessibility',
-    type: 'Grievance',
-    progress: 90,
-    lastUpdate: '3 days ago',
-    status: 'Near Completion',
-  },
-];
+type WatchRow = { id: string; user_id: string | null; target_type: 'policy'|'ticket'; target_id: string; created_at: string };
+type TicketRow = { id: string; category: string; status: string; created_at: string };
+type UpdateRow = { id: string; ticket_id: string; message: string | null; progress_percent: number | null; created_at: string };
 
 export default function WatchlistScreen() {
+  const insets = useSafeAreaInsets();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [watch, setWatch] = useState<WatchRow[]>([]);
+  const [tickets, setTickets] = useState<Record<string, TicketRow>>({});
+  const [latestUpdate, setLatestUpdate] = useState<Record<string, UpdateRow | null>>({});
+
+  useEffect(() => {
+    let mounted = true;
+    async function load() {
+      try {
+        setLoading(true);
+        setError(null);
+        const { data: wl, error: wErr } = await supabase
+          .from('watchlist')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(50);
+        if (wErr) throw wErr;
+        if (!mounted) return;
+        setWatch(wl || []);
+
+        const ticketIds = (wl || []).filter(x => x.target_type === 'ticket').map(x => x.target_id);
+        if (ticketIds.length) {
+          const { data: tk, error: tErr } = await supabase
+            .from('tickets')
+            .select('*')
+            .in('id', ticketIds);
+          if (tErr) throw tErr;
+          const map: Record<string, TicketRow> = {};
+          (tk || []).forEach((t) => { map[t.id] = t as any; });
+          if (!mounted) return;
+          setTickets(map);
+
+          // latest progress update per ticket
+          const { data: ups, error: uErr } = await supabase
+            .from('progress_updates')
+            .select('*')
+            .in('ticket_id', ticketIds)
+            .order('created_at', { ascending: false });
+          if (uErr) throw uErr;
+          const latest: Record<string, UpdateRow | null> = {};
+          (ups || []).forEach((u) => { if (!latest[u.ticket_id]) latest[u.ticket_id] = u as any; });
+          if (!mounted) return;
+          setLatestUpdate(latest);
+        } else {
+          setTickets({});
+          setLatestUpdate({});
+        }
+      } catch (e: any) {
+        console.warn('Watchlist load error:', e?.message || e);
+        if (mounted) setError(e?.message || 'Failed to load');
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    }
+    load();
+
+    // Realtime on watchlist and progress updates
+    const wlChan = supabase
+      .channel('watchlist_rt')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'watchlist' }, () => load())
+      .subscribe();
+    const updChan = supabase
+      .channel('watch_updates_rt')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'progress_updates' }, () => load())
+      .subscribe();
+    return () => {
+      supabase.removeChannel(wlChan);
+      supabase.removeChannel(updChan);
+      mounted = false;
+    };
+  }, []);
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
       
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 12 }] }>
         <Text style={styles.title}>Personal Watchlist</Text>
         <TouchableOpacity style={styles.addButton}>
           <Ionicons name="add" size={24} color="#2563eb" />
@@ -53,24 +105,44 @@ export default function WatchlistScreen() {
       {/* Stats Cards */}
       <View style={styles.statsContainer}>
         <View style={styles.statCard}>
-          <Text style={styles.statNumber}>12</Text>
+          <Text style={styles.statNumber}>{watch.length}</Text>
           <Text style={styles.statLabel}>Tracking</Text>
         </View>
         <View style={styles.statCard}>
-          <Text style={styles.statNumber}>8</Text>
+          <Text style={styles.statNumber}>{Object.keys(latestUpdate).length}</Text>
           <Text style={styles.statLabel}>Updates</Text>
         </View>
         <View style={styles.statCard}>
-          <Text style={styles.statNumber}>3</Text>
+          <Text style={styles.statNumber}>{Object.values(tickets).filter(t => t.status === 'resolved').length}</Text>
           <Text style={styles.statLabel}>Resolved</Text>
         </View>
       </View>
 
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        {mockWatchlistItems.map((item) => (
-          <TouchableOpacity key={item.id} style={styles.itemCard}>
+        {loading ? (
+          <View style={styles.emptyState}>
+            <Ionicons name="sync" size={32} color="#9ca3af" />
+            <Text style={styles.emptyTitle}>Loading…</Text>
+          </View>
+        ) : error ? (
+          <View style={styles.emptyState}>
+            <Ionicons name="warning" size={32} color="#ef4444" />
+            <Text style={styles.emptyTitle}>Failed to load</Text>
+            <Text style={styles.emptyDescription}>{error}</Text>
+          </View>
+        ) : watch.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Ionicons name="bookmark-outline" size={48} color="#d1d5db" />
+            <Text style={styles.emptyTitle}>No items yet</Text>
+            <Text style={styles.emptyDescription}>Add policies or tickets to your watchlist.</Text>
+          </View>
+        ) : (
+          watch.map((w) => (
+          <TouchableOpacity key={w.id} style={styles.itemCard}>
             <View style={styles.cardHeader}>
-              <Text style={styles.itemTitle}>{item.title}</Text>
+              <Text style={styles.itemTitle}>
+                {w.target_type === 'ticket' ? `Ticket #${(tickets[w.target_id]?.id || '').slice(0,8)}` : 'Policy'}
+              </Text>
               <TouchableOpacity>
                 <Ionicons name="ellipsis-horizontal" size={20} color="#6b7280" />
               </TouchableOpacity>
@@ -78,35 +150,35 @@ export default function WatchlistScreen() {
             
             <View style={styles.typeContainer}>
               <View style={styles.typeBadge}>
-                <Text style={styles.typeText}>{item.type}</Text>
+                <Text style={styles.typeText}>
+                  {w.target_type === 'ticket' ? `Category: ${tickets[w.target_id]?.category ?? 'N/A'}` : 'Policy'}
+                </Text>
               </View>
             </View>
             
             {/* Progress Bar */}
             <View style={styles.progressContainer}>
               <View style={styles.progressBar}>
-                <View style={[styles.progressFill, { width: `${item.progress}%` }]} />
+                <View style={[styles.progressFill, { width: `${Math.max(0, Math.min(100, latestUpdate[w.target_id]?.progress_percent ?? 0))}%` }]} />
               </View>
-              <Text style={styles.progressText}>{item.progress}%</Text>
+              <Text style={styles.progressText}>{Math.max(0, Math.min(100, latestUpdate[w.target_id]?.progress_percent ?? 0))}%</Text>
             </View>
             
             <View style={styles.cardFooter}>
               <View>
-                <Text style={styles.statusText}>{item.status}</Text>
-                <Text style={styles.updateText}>Last update: {item.lastUpdate}</Text>
+                <Text style={styles.statusText}>{tickets[w.target_id]?.status ?? 'Unknown'}</Text>
+                <Text style={styles.updateText}>
+                  Last update: {latestUpdate[w.target_id]?.created_at ? new Date(latestUpdate[w.target_id]!.created_at).toLocaleString() : '—'}
+                </Text>
               </View>
               <Ionicons name="arrow-forward" size={20} color="#2563eb" />
             </View>
           </TouchableOpacity>
-        ))}
+        ))
+        )}
         
-        {/* Empty State */}
+        {/* Call to action */}
         <View style={styles.emptyState}>
-          <Ionicons name="bookmark-outline" size={48} color="#d1d5db" />
-          <Text style={styles.emptyTitle}>Stay Informed</Text>
-          <Text style={styles.emptyDescription}>
-            Add policies and issues to your watchlist to track their progress and get updates.
-          </Text>
           <TouchableOpacity style={styles.emptyButton}>
             <Text style={styles.emptyButtonText}>Browse Policies</Text>
           </TouchableOpacity>

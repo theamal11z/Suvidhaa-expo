@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -7,43 +7,106 @@ import {
   TouchableOpacity,
   SafeAreaView,
   StatusBar,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { supabase } from '../../lib/supabase';
 
-const mockPolicies = [
-  {
-    id: 1,
-    title: 'Digital India Initiative',
-    description: 'Government program to transform India digitally',
-    status: 'Active',
-    category: 'Technology',
-    date: '2024-01-15',
-  },
-  {
-    id: 2,
-    title: 'Pradhan Mantri Awas Yojana',
-    description: 'Housing for all by 2024',
-    status: 'Under Review',
-    category: 'Housing',
-    date: '2024-01-10',
-  },
-  {
-    id: 3,
-    title: 'Swachh Bharat Mission',
-    description: 'Clean India campaign for sanitation',
-    status: 'Active',
-    category: 'Environment',
-    date: '2024-01-05',
-  },
-];
+type Policy = {
+  id: string;
+  title: string;
+  summary: string;
+  category: string;
+  status: string;
+  department: string;
+  created_at: string;
+};
 
 export default function PoliciesScreen() {
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const [policies, setPolicies] = useState<Policy[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchPolicies();
+  }, []);
+
+  const fetchPolicies = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const { data, error } = await supabase
+        .from('policies')
+        .select('id, title, summary, category, status, department, created_at')
+        .order('created_at', { ascending: false })
+        .limit(20);
+
+      if (error) throw error;
+      setPolicies(data || []);
+    } catch (err: any) {
+      console.error('Error fetching policies:', err);
+      setError(err.message || 'Failed to load policies');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-IN', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status.toLowerCase()) {
+      case 'active': return { bg: '#dcfce7', text: '#16a34a' };
+      case 'under_review': return { bg: '#fef3c7', text: '#d97706' };
+      case 'archived': return { bg: '#f3f4f6', text: '#6b7280' };
+      default: return { bg: '#dbeafe', text: '#2563eb' };
+    }
+  };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#2563eb" />
+          <Text style={styles.loadingText}>Loading policies...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (error) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+        <View style={styles.errorContainer}>
+          <Ionicons name="warning" size={48} color="#ef4444" />
+          <Text style={styles.errorTitle}>Error Loading Policies</Text>
+          <Text style={styles.errorMessage}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={fetchPolicies}>
+            <Text style={styles.retryButtonText}>Try Again</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
       
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <Text style={styles.title}>Government Policies</Text>
         <TouchableOpacity style={styles.filterButton}>
           <Ionicons name="filter" size={24} color="#2563eb" />
@@ -51,34 +114,53 @@ export default function PoliciesScreen() {
       </View>
 
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        {mockPolicies.map((policy) => (
-          <TouchableOpacity key={policy.id} style={styles.policyCard}>
-            <View style={styles.cardHeader}>
-              <View style={styles.categoryBadge}>
-                <Text style={styles.categoryText}>{policy.category}</Text>
-              </View>
-              <View style={[
-                styles.statusBadge,
-                { backgroundColor: policy.status === 'Active' ? '#dcfce7' : '#fef3c7' }
-              ]}>
-                <Text style={[
-                  styles.statusText,
-                  { color: policy.status === 'Active' ? '#16a34a' : '#d97706' }
-                ]}>
-                  {policy.status}
-                </Text>
-              </View>
-            </View>
-            
-            <Text style={styles.policyTitle}>{policy.title}</Text>
-            <Text style={styles.policyDescription}>{policy.description}</Text>
-            
-            <View style={styles.cardFooter}>
-              <Text style={styles.dateText}>{policy.date}</Text>
-              <Ionicons name="arrow-forward" size={20} color="#2563eb" />
-            </View>
-          </TouchableOpacity>
-        ))}
+        {policies.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Ionicons name="document-outline" size={48} color="#d1d5db" />
+            <Text style={styles.emptyTitle}>No Policies Found</Text>
+            <Text style={styles.emptyMessage}>Check back later for new government policies.</Text>
+          </View>
+        ) : (
+          policies.map((policy) => {
+            const statusColors = getStatusColor(policy.status);
+            return (
+              <TouchableOpacity 
+                key={policy.id} 
+                style={styles.policyCard}
+                onPress={() => router.push(`/policy/${policy.id}`)}
+              >
+                <View style={styles.cardHeader}>
+                  <View style={styles.categoryBadge}>
+                    <Text style={styles.categoryText}>{policy.category || 'General'}</Text>
+                  </View>
+                  <View style={[
+                    styles.statusBadge,
+                    { backgroundColor: statusColors.bg }
+                  ]}>
+                    <Text style={[
+                      styles.statusText,
+                      { color: statusColors.text }
+                    ]}>
+                      {policy.status.replace('_', ' ').toUpperCase()}
+                    </Text>
+                  </View>
+                </View>
+                
+                <Text style={styles.policyTitle}>{policy.title}</Text>
+                <Text style={styles.policyDescription}>{policy.summary || 'No summary available'}</Text>
+                
+                {policy.department && (
+                  <Text style={styles.departmentText}>📍 {policy.department}</Text>
+                )}
+                
+                <View style={styles.cardFooter}>
+                  <Text style={styles.dateText}>{formatDate(policy.created_at)}</Text>
+                  <Ionicons name="arrow-forward" size={20} color="#2563eb" />
+                </View>
+              </TouchableOpacity>
+            );
+          })
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -171,5 +253,69 @@ const styles = StyleSheet.create({
   dateText: {
     fontSize: 12,
     color: '#9ca3af',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#6b7280',
+    marginTop: 16,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+  },
+  errorTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#111827',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  errorMessage: {
+    fontSize: 14,
+    color: '#6b7280',
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  retryButton: {
+    backgroundColor: '#2563eb',
+    borderRadius: 12,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+  },
+  retryButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    padding: 40,
+    marginTop: 40,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#111827',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptyMessage: {
+    fontSize: 14,
+    color: '#6b7280',
+    textAlign: 'center',
+  },
+  departmentText: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 8,
+    marginBottom: 12,
   },
 });
