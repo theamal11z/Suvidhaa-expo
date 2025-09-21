@@ -124,11 +124,11 @@ export async function getConversationContext(conversation_id: string, limit = 10
 export async function createSystemPrompt() {
   const memories = await getAllUserMemories();
   
-  let systemPrompt = `You are an expert legal advisor and government services assistant for Indian citizens. You specialize in:
+  let systemPrompt = `You are an expert legal advisor and government services assistant for Nepali citizens. You specialize in:
 
-- Government policies, schemes, and regulations
+- Government policies, schemes, and regulations in Nepal
 - Legal procedures and documentation
-- Citizen rights and obligations
+- Citizen rights and obligations in Nepal
 - Application processes for government services
 
 Your personality:
@@ -218,6 +218,13 @@ export async function generateAIReply(conversation_id: string, prompt: string) {
     .single();
   if (insErr) throw insErr;
 
+  // Optionally log into user's knowledge base (Questions/Answers)
+  try {
+    await logQAForUserKnowledge(prompt, content);
+  } catch (kbErr) {
+    console.warn('KB log failed:', kbErr);
+  }
+
   // Update conversation with intelligent title
   const title = await generateConversationTitle(conversation_id);
   await supabase
@@ -292,16 +299,53 @@ export async function generateConversationTitle(conversation_id: string): Promis
   const firstUserMessage = messages.find(m => m.role === 'user')?.content || '';
   
   // Simple title generation based on keywords
-  if (firstUserMessage.toLowerCase().includes('passport')) return 'Passport Application Help';
-  if (firstUserMessage.toLowerCase().includes('pan card')) return 'PAN Card Assistance';
-  if (firstUserMessage.toLowerCase().includes('aadhaar')) return 'Aadhaar Card Support';
-  if (firstUserMessage.toLowerCase().includes('gst')) return 'GST Registration Help';
-  if (firstUserMessage.toLowerCase().includes('property')) return 'Property Related Query';
-  if (firstUserMessage.toLowerCase().includes('tax')) return 'Tax Related Help';
-  if (firstUserMessage.toLowerCase().includes('marriage')) return 'Marriage Documentation';
-  if (firstUserMessage.toLowerCase().includes('education')) return 'Education Related Query';
+  const lower = firstUserMessage.toLowerCase();
+  if (lower.includes('passport') || lower.includes('e-passport')) return 'Passport/E-passport Help (Nepal)';
+  if (lower.includes('citizenship')) return 'Citizenship Documentation (Nepal)';
+  if (lower.includes('pan')) return 'PAN Assistance (IRD Nepal)';
+  if (lower.includes('ssu') || lower.includes('ssf') || lower.includes('social security')) return 'Social Security Fund (SSF) Help';
+  if (lower.includes('company') || lower.includes('registration') || lower.includes('ocr')) return 'Company Registration (OCR)';
+  if (lower.includes('driving') || lower.includes('license') || lower.includes('smart card')) return 'Driving License Support';
+  if (lower.includes('nagarik')) return 'Nagarik App Assistance';
+  if (lower.includes('property') || lower.includes('land')) return 'Land/Property Related Query';
+  if (lower.includes('tax') || lower.includes('ird') || lower.includes('vat')) return 'Tax Related Help (Nepal)';
+  if (lower.includes('education') || lower.includes('scholarship')) return 'Education/Scholarship Query';
   
   // Default to first few words of the user's message
   const words = firstUserMessage.split(' ').slice(0, 4);
   return words.join(' ').substring(0, 30) + (firstUserMessage.length > 30 ? '...' : '');
+}
+
+// Clear all messages for a conversation (used by "Clear Chat")
+export async function clearConversation(conversation_id: string) {
+  // Delete messages tied to this conversation
+  const { error: delErr } = await supabase
+    .from('ai_messages')
+    .delete()
+    .eq('conversation_id', conversation_id);
+  if (delErr) throw delErr;
+
+  // Touch the conversation timestamp and reset a generic title
+  const { error: updErr } = await supabase
+    .from('ai_conversations')
+    .update({ updated_at: new Date().toISOString(), title: 'Assistant Chat' })
+    .eq('id', conversation_id);
+  if (updErr) throw updErr;
+}
+
+// Log Q&A into user's personal knowledge via questions/answers tables
+export async function logQAForUserKnowledge(questionText: string, answerText: string) {
+  // Insert question
+  const { data: q, error: qErr } = await supabase
+    .from('questions')
+    .insert({ text: questionText, status: 'answered' })
+    .select('id')
+    .single();
+  if (qErr) throw qErr;
+
+  // Insert AI answer linked to the question
+  const { error: aErr } = await supabase
+    .from('answers')
+    .insert({ question_id: q.id, answer_text: answerText, source_type: 'ai', verified: false });
+  if (aErr) throw aErr;
 }

@@ -10,11 +10,12 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getOrCreateConversation, listMessages, sendMessage, generateAIReply, AIMessage } from '../lib/ai';
+import { getOrCreateConversation, listMessages, sendMessage, generateAIReply, AIMessage, clearConversation } from '../lib/ai';
 
 interface ChatMessageUI {
   id: string;
@@ -50,7 +51,7 @@ export default function AskAIScreen() {
         if (mapped.length === 0) {
           mapped.push({
             id: 'welcome',
-            text: "Hello! I'm your legal advisor and government services assistant. I specialize in helping Indian citizens navigate government processes, understand policies, and handle legal documentation.\n\nI learn about you over time to provide personalized advice. To get started, could you tell me a bit about what you need help with today?",
+            text: "Namaste! I'm your legal advisor and government services assistant for Nepal. I help Nepali citizens navigate government processes, understand policies, and handle legal documentation.\n\nI learn about you over time to provide personalized advice. To get started, could you tell me what you need help with today?",
             isUser: false,
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           });
@@ -60,7 +61,7 @@ export default function AskAIScreen() {
         // Fallback welcome message if schema not ready yet
         setChatMessages([{
           id: 'welcome',
-          text: "Hello! I'm your legal advisor and government services assistant. I specialize in helping Indian citizens navigate government processes, understand policies, and handle legal documentation.\n\nI learn about you over time to provide personalized advice. To get started, could you tell me a bit about what you need help with today?",
+          text: "Namaste! I'm your legal advisor and government services assistant for Nepal. I help Nepali citizens navigate government processes, understand policies, and handle legal documentation.\n\nI learn about you over time to provide personalized advice. To get started, could you tell me what you need help with today?",
           isUser: false,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         }]);
@@ -70,12 +71,12 @@ export default function AskAIScreen() {
   }, []);
 
   const quickQuestions = [
-    'I need help with passport application',
-    'Tell me about Ayushman Bharat benefits', 
-    'I want to register for GST',
-    'How do I get a new PAN card?',
-    'I have a property-related question',
-    'Can you help with income tax filing?',
+    'Help with Nepal e-passport application',
+    'Explain Social Security Fund (SSF)',
+    'How to get PAN in Nepal (IRD)?',
+    'Driving license smart card process',
+    'Citizenship certificate guidance',
+    'Company registration at OCR',
   ];
 
   const handleSendMessage = async () => {
@@ -129,6 +130,48 @@ export default function AskAIScreen() {
     setMessage(question);
   };
 
+  const handleClearChat = async () => {
+    if (!conversationId) {
+      // Nothing to clear; just reset UI
+      setChatMessages([{
+        id: 'welcome',
+        text: "Hello! I'm your legal advisor and government services assistant. I specialize in helping Indian citizens navigate government processes, understand policies, and handle legal documentation.\n\nI learn about you over time to provide personalized advice. To get started, could you tell me a bit about what you need help with today?",
+        isUser: false,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      }]);
+      return;
+    }
+
+    Alert.alert(
+      'Clear chat?',
+      'This will delete all messages in this conversation.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setIsTyping(true);
+              await clearConversation(conversationId);
+              setChatMessages([{
+                id: 'welcome',
+                text: "Hello! I'm your legal advisor and government services assistant. I specialize in helping Indian citizens navigate government processes, understand policies, and handle legal documentation.\n\nI learn about you over time to provide personalized advice. To get started, could you tell me a bit about what you need help with today?",
+                isUser: false,
+                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              }]);
+            } catch (e) {
+              console.error('Clear chat failed', e);
+              Alert.alert('Failed to clear', 'Please try again.');
+            } finally {
+              setIsTyping(false);
+            }
+          }
+        }
+      ]
+    );
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
@@ -140,11 +183,16 @@ export default function AskAIScreen() {
         </TouchableOpacity>
         <View style={styles.headerCenter}>
           <Text style={styles.title}>AI Assistant</Text>
-          <Text style={styles.subtitle}>Government Services Helper</Text>
+          <Text style={styles.subtitle}>Nepal Government Services Helper</Text>
         </View>
-        <TouchableOpacity style={styles.menuButton} onPress={() => router.push('/ai-memory')}>
-          <Ionicons name="brain" size={20} color="#6b7280" />
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <TouchableOpacity style={styles.menuButton} onPress={handleClearChat}>
+            <Ionicons name="trash" size={20} color="#ef4444" />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.menuButton} onPress={() => router.push('/ai-memory' as any)}>
+            <Ionicons name="sparkles" size={20} color="#6b7280" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <KeyboardAvoidingView 
@@ -294,6 +342,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#6b7280',
     marginTop: 2,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   menuButton: {
     padding: 8,

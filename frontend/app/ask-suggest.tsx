@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -13,15 +13,30 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { submitQuestion, submitSuggestion } from '../lib/qa';
+import { submitQuestion, submitSuggestion, listMyQuestions } from '../lib/qa';
 
 export default function AskSuggestScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState('ask');
   const [questionText, setQuestionText] = useState('');
+  const [questionCategory, setQuestionCategory] = useState<string>('general');
   const [suggestionText, setSuggestionText] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [recentQuestions, setRecentQuestions] = useState<Array<{ id: string; text: string; status: string; created_at: string }>>([]);
+  const [loadingRecent, setLoadingRecent] = useState(true);
+
+  const loadRecentQuestions = async () => {
+    try {
+      setLoadingRecent(true);
+      const rows = await listMyQuestions(10);
+      setRecentQuestions(rows);
+    } catch (e) {
+      console.error('Failed to load recent questions', e);
+    } finally {
+      setLoadingRecent(false);
+    }
+  };
 
   const handleSubmitQuestion = async () => {
     if (!questionText.trim()) {
@@ -30,11 +45,13 @@ export default function AskSuggestScreen() {
     }
     try {
       setSubmitting(true);
-      const row = await submitQuestion(questionText);
+      const row = await submitQuestion(questionText, null, questionCategory);
       Alert.alert('Success', 'Your question has been submitted!', [
         { text: 'OK' }
       ]);
       setQuestionText('');
+      // Reload recent questions
+      await loadRecentQuestions();
     } catch (e: any) {
       console.error(e);
       Alert.alert('Submission failed', e?.message ?? 'Unknown error');
@@ -61,26 +78,14 @@ export default function AskSuggestScreen() {
     }
   };
 
-  const recentQuestions = [
-    {
-      id: 1,
-      question: 'How to apply for Aadhaar card correction?',
-      status: 'Answered',
-      date: '2 days ago',
-    },
-    {
-      id: 2,
-      question: 'What are the benefits of PM-KISAN scheme?',
-      status: 'Pending',
-      date: '5 days ago',
-    },
-    {
-      id: 3,
-      question: 'How to register for GST?',
-      status: 'Answered',
-      date: '1 week ago',
-    },
-  ];
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      await loadRecentQuestions();
+      if (!mounted) return;
+    })();
+    return () => { mounted = false; };
+  }, []);
 
   const categories = [
     { icon: 'medical', title: 'Healthcare', color: '#ef4444' },
@@ -144,7 +149,26 @@ export default function AskSuggestScreen() {
               <Text style={styles.sectionSubtitle}>
                 Ask anything about government services, policies, or procedures
               </Text>
-              
+
+              {/* Category selector */}
+              <View style={styles.categorySelector}>
+                {[
+                  { key: 'general', label: 'General' },
+                  { key: 'policy-specific', label: 'Policy Specific' },
+                  { key: 'service-inquiry', label: 'Service Inquiry' },
+                ].map(opt => (
+                  <TouchableOpacity
+                    key={opt.key}
+                    onPress={() => setQuestionCategory(opt.key)}
+                    style={[styles.catPill, questionCategory === opt.key && styles.catPillActive]}
+                  >
+                    <Text style={[styles.catPillText, questionCategory === opt.key && styles.catPillTextActive]}>
+                      {opt.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
               <TextInput
                 style={styles.textArea}
                 placeholder="Type your question here..."
@@ -167,7 +191,7 @@ export default function AskSuggestScreen() {
               <Text style={styles.sectionTitle}>Browse by Category</Text>
               <View style={styles.categoriesGrid}>
                 {categories.map((category, index) => (
-                  <TouchableOpacity key={index} style={styles.categoryCard}>
+                  <TouchableOpacity key={index} style={styles.categoryCard} onPress={() => router.push(`/questions/category/${encodeURIComponent(category.title.toLowerCase())}` as any)}>
                     <View style={[styles.categoryIcon, { backgroundColor: category.color }]}>
                       <Ionicons name={category.icon as any} size={24} color="#ffffff" />
                     </View>
@@ -180,25 +204,31 @@ export default function AskSuggestScreen() {
             {/* Recent Questions */}
             <View style={styles.recentSection}>
               <Text style={styles.sectionTitle}>Your Recent Questions</Text>
-              {recentQuestions.map((item) => (
-                <TouchableOpacity key={item.id} style={styles.questionCard}>
-                  <View style={styles.questionHeader}>
-                    <View style={[
-                      styles.statusBadge,
-                      { backgroundColor: item.status === 'Answered' ? '#dcfce7' : '#fef3c7' }
-                    ]}>
-                      <Text style={[
-                        styles.statusText,
-                        { color: item.status === 'Answered' ? '#16a34a' : '#d97706' }
+              {loadingRecent ? (
+                <Text style={styles.dateText}>Loading…</Text>
+              ) : recentQuestions.length === 0 ? (
+                <Text style={styles.dateText}>No questions yet</Text>
+              ) : (
+                recentQuestions.map((item) => (
+                  <TouchableOpacity key={item.id} style={styles.questionCard} onPress={() => router.push(`/question/${item.id}` as any)}>
+                    <View style={styles.questionHeader}>
+                      <View style={[
+                        styles.statusBadge,
+                        { backgroundColor: item.status === 'answered' ? '#dcfce7' : item.status === 'open' ? '#fef3c7' : '#e5e7eb' }
                       ]}>
-                        {item.status}
-                      </Text>
+                        <Text style={[
+                          styles.statusText,
+                          { color: item.status === 'answered' ? '#16a34a' : item.status === 'open' ? '#d97706' : '#6b7280' }
+                        ]}>
+                          {item.status.toUpperCase()}
+                        </Text>
+                      </View>
+                      <Text style={styles.dateText}>{new Date(item.created_at).toLocaleDateString()}</Text>
                     </View>
-                    <Text style={styles.dateText}>{item.date}</Text>
-                  </View>
-                  <Text style={styles.questionText}>{item.question}</Text>
-                </TouchableOpacity>
-              ))}
+                    <Text style={styles.questionText}>{item.text}</Text>
+                  </TouchableOpacity>
+                ))
+              )}
             </View>
           </>
         ) : (
@@ -430,6 +460,32 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#374151',
     lineHeight: 20,
+  },
+  categorySelector: {
+    flexDirection: 'row',
+    marginBottom: 12,
+  },
+  catPill: {
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    backgroundColor: '#f9fafb',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginRight: 8,
+  },
+  catPillActive: {
+    backgroundColor: '#dbeafe',
+    borderColor: '#93c5fd',
+  },
+  catPillText: {
+    fontSize: 12,
+    color: '#374151',
+    fontWeight: '500',
+  },
+  catPillTextActive: {
+    color: '#1d4ed8',
+    fontWeight: '600',
   },
   feedbackTypesSection: {
     marginBottom: 40,

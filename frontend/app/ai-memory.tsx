@@ -100,7 +100,7 @@ export default function AIMemoryScreen() {
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         {memories.length === 0 ? (
           <View style={styles.emptyContainer}>
-            <Ionicons name="brain" size={64} color="#d1d5db" />
+            <Ionicons name="sparkles" size={64} color="#d1d5db" />
             <Text style={styles.emptyTitle}>No memories yet</Text>
             <Text style={styles.emptyMessage}>
               Start chatting with the AI assistant to build your knowledge base
