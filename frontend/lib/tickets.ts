@@ -16,6 +16,15 @@ export type Ticket = {
   created_at: string;
 };
 
+export type TicketAttachment = {
+  id: string;
+  ticket_id: string;
+  url: string;
+  mime_type: string | null;
+  size: number | null;
+  created_at: string;
+};
+
 export async function createTicket(input: Partial<Ticket> & { category: string }) {
   const { data, error } = await supabase
     .from('tickets')
@@ -35,6 +44,29 @@ export async function createTicket(input: Partial<Ticket> & { category: string }
     .single();
   if (error) throw error;
   return data as Ticket;
+}
+
+// Create ticket while appending attachment URLs into the description.
+// This avoids relying on ticket_attachments and avoids setting URL into
+// source_id (which may be a UUID column in some schemas).
+export async function createTicketWithAttachments(
+  input: Partial<Ticket> & { category: string },
+  attachments: Array<{ url: string; mime_type?: string | null; size?: number | null }>
+) {
+  const urls = attachments.map(a => a.url).filter(Boolean);
+  const appended = urls.length > 0
+    ? [input.description?.trim() || '', 'Attachments:', ...urls].filter(Boolean).join('\n\n')
+    : input.description ?? null;
+
+  const ticket = await createTicket({
+    ...input,
+    description: appended,
+    // Record type only; do not set source_id to a URL if the column is UUID
+    source_type: urls.length > 0 ? (input.source_type ?? 'cloudinary') : (input.source_type ?? null),
+    source_id: input.source_id ?? null,
+  });
+
+  return ticket;
 }
 
 export async function listTickets(limit = 50) {

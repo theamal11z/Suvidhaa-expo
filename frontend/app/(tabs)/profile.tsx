@@ -13,13 +13,17 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
+import { useRouter } from 'expo-router';
 
 export default function ProfileScreen() {
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
+  const [userLocation, setUserLocation] = useState<string | null>(null);
   const [notificationsEnabled, setNotificationsEnabled] = React.useState(true);
   const [darkModeEnabled, setDarkModeEnabled] = React.useState(false);
+  const [language, setLanguage] = useState<string>('English');
   
   // User statistics
   const [userStats, setUserStats] = useState({
@@ -32,9 +36,9 @@ export default function ProfileScreen() {
     {
       title: 'Account',
       items: [
-        { icon: 'person-outline', title: 'Edit Profile', action: () => {} },
-        { icon: 'shield-outline', title: 'Privacy & Security', action: () => {} },
-        { icon: 'card-outline', title: 'Payment Methods', action: () => {} },
+        { icon: 'person-outline', title: 'Edit Profile', action: () => router.push('/edit-profile') },
+        { icon: 'shield-outline', title: 'Privacy & Security', action: () => router.push('/privacy-security') },
+        { icon: 'card-outline', title: 'Payment Methods', action: () => router.push('/payment-methods') },
       ],
     },
     {
@@ -54,15 +58,15 @@ export default function ProfileScreen() {
           value: darkModeEnabled,
           onToggle: setDarkModeEnabled,
         },
-        { icon: 'language-outline', title: 'Language', subtitle: 'English', action: () => {} },
+        { icon: 'language-outline', title: 'Language', subtitle: language, action: () => router.push('/language') },
       ],
     },
     {
       title: 'Support',
       items: [
-        { icon: 'help-circle-outline', title: 'Help & FAQ', action: () => {} },
-        { icon: 'chatbubble-outline', title: 'Contact Support', action: () => {} },
-        { icon: 'star-outline', title: 'Rate App', action: () => {} },
+        { icon: 'help-circle-outline', title: 'Help & FAQ', action: () => router.push('/help-faq') },
+        { icon: 'chatbubble-outline', title: 'Contact Support', action: () => router.push('/contact-support') },
+        { icon: 'star-outline', title: 'Rate App', action: () => router.push('/rate-app') },
       ],
     },
   ];
@@ -93,6 +97,35 @@ export default function ProfileScreen() {
           resolved: ticketsResult.status === 'fulfilled' ? (ticketsResult.value.count || 0) : 0,
           policies: watchlistResult.status === 'fulfilled' ? (watchlistResult.value.count || 0) : 0
         });
+
+        // Fetch profile location
+        try {
+          const { data: profileRow } = await supabase
+            .from('user_profiles')
+            .select('location')
+            .eq('user_id', user.id)
+            .maybeSingle();
+          setUserLocation((profileRow as any)?.location ?? null);
+        } catch (e) {
+          // ignore
+        }
+
+        // Fetch preferred language from AI memory if available
+        try {
+          const { data: langRow } = await supabase
+            .from('ai_memory')
+            .select('value')
+            .eq('user_id', user.id)
+            .eq('key', 'app_language')
+            .maybeSingle();
+          const v = (langRow as any)?.value;
+          if (v) {
+            const label = typeof v === 'string' ? v : (v.label || v.code || 'English');
+            setLanguage(label);
+          }
+        } catch (e) {
+          // ignore preference fetch errors
+        }
       }
     } catch (error) {
       console.warn('Error fetching user data:', error);
@@ -111,7 +144,7 @@ export default function ProfileScreen() {
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 12 }] }>
         <Text style={styles.title}>Profile</Text>
-        <TouchableOpacity style={styles.settingsButton}>
+        <TouchableOpacity style={styles.settingsButton} onPress={() => router.push('/privacy-security')}>
           <Ionicons name="settings-outline" size={24} color="#2563eb" />
         </TouchableOpacity>
       </View>
@@ -134,10 +167,12 @@ export default function ProfileScreen() {
             {userEmail ? (
               <Text style={styles.userEmail}>{userEmail}</Text>
             ) : null}
-            <Text style={styles.userLocation}>📍 New Delhi, India</Text>
+            {userLocation ? (
+              <Text style={styles.userLocation}>📍 {userLocation}</Text>
+            ) : null}
           </View>
           
-          <TouchableOpacity style={styles.editButton}>
+          <TouchableOpacity style={styles.editButton} onPress={() => router.push('/edit-profile')}>
             <Ionicons name="create-outline" size={20} color="#2563eb" />
           </TouchableOpacity>
         </View>

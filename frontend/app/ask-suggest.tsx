@@ -20,7 +20,8 @@ export default function AskSuggestScreen() {
   const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState('ask');
   const [questionText, setQuestionText] = useState('');
-  const [questionCategory, setQuestionCategory] = useState<string>('general');
+  // Category key stored in DB (must match browse keys)
+  const [questionCategory, setQuestionCategory] = useState<string>('');
   const [suggestionText, setSuggestionText] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [recentQuestions, setRecentQuestions] = useState<Array<{ id: string; text: string; status: string; created_at: string }>>([]);
@@ -87,14 +88,22 @@ export default function AskSuggestScreen() {
     return () => { mounted = false; };
   }, []);
 
+  // Single source of truth for categories (keys are stored in DB)
   const categories = [
-    { icon: 'medical', title: 'Healthcare', color: '#ef4444' },
-    { icon: 'school', title: 'Education', color: '#3b82f6' },
-    { icon: 'business', title: 'Business', color: '#10b981' },
-    { icon: 'home', title: 'Housing', color: '#f59e0b' },
-    { icon: 'car', title: 'Transport', color: '#8b5cf6' },
-    { icon: 'leaf', title: 'Environment', color: '#22c55e' },
+    { key: 'healthcare', label: 'Healthcare', icon: 'medical', color: '#ef4444' },
+    { key: 'education', label: 'Education', icon: 'school', color: '#3b82f6' },
+    { key: 'business', label: 'Business', icon: 'business', color: '#10b981' },
+    { key: 'housing', label: 'Housing', icon: 'home', color: '#f59e0b' },
+    { key: 'transport', label: 'Transport', icon: 'car', color: '#8b5cf6' },
+    { key: 'environment', label: 'Environment', icon: 'leaf', color: '#22c55e' },
   ];
+
+  // Ensure a default selection
+  useEffect(() => {
+    if (!questionCategory && categories.length > 0) {
+      setQuestionCategory(categories[0].key);
+    }
+  }, [questionCategory]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -150,13 +159,9 @@ export default function AskSuggestScreen() {
                 Ask anything about government services, policies, or procedures
               </Text>
 
-              {/* Category selector */}
+            {/* Category selector (same categories as Browse) */}
               <View style={styles.categorySelector}>
-                {[
-                  { key: 'general', label: 'General' },
-                  { key: 'policy-specific', label: 'Policy Specific' },
-                  { key: 'service-inquiry', label: 'Service Inquiry' },
-                ].map(opt => (
+                {categories.map(opt => (
                   <TouchableOpacity
                     key={opt.key}
                     onPress={() => setQuestionCategory(opt.key)}
@@ -191,11 +196,15 @@ export default function AskSuggestScreen() {
               <Text style={styles.sectionTitle}>Browse by Category</Text>
               <View style={styles.categoriesGrid}>
                 {categories.map((category, index) => (
-                  <TouchableOpacity key={index} style={styles.categoryCard} onPress={() => router.push(`/questions/category/${encodeURIComponent(category.title.toLowerCase())}` as any)}>
+                  <TouchableOpacity
+                    key={index}
+                    style={styles.categoryCard}
+                    onPress={() => router.push(`/questions/category/${encodeURIComponent(category.key)}` as any)}
+                  >
                     <View style={[styles.categoryIcon, { backgroundColor: category.color }]}>
                       <Ionicons name={category.icon as any} size={24} color="#ffffff" />
                     </View>
-                    <Text style={styles.categoryText}>{category.title}</Text>
+                    <Text style={styles.categoryText}>{category.label}</Text>
                   </TouchableOpacity>
                 ))}
               </View>

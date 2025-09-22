@@ -15,13 +15,23 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getOrCreateConversation, listMessages, sendMessage, generateAIReply, AIMessage, clearConversation } from '../lib/ai';
+import { getOrCreateConversation, listMessages, sendMessage, AIMessage, clearConversation } from '../lib/ai';
+import { AIIntakeReply, generateIntakeReply } from '../lib/intake';
 
 interface ChatMessageUI {
   id: string;
   text: string;
   isUser: boolean;
   timestamp: string;
+}
+
+function renderAssistantText(parsed: AIIntakeReply): string {
+  if (parsed.mode === 'ask') {
+    return [parsed.message, parsed.question].filter(Boolean).join(' ');
+  }
+  const steps = (parsed.steps || []).slice(0, 3);
+  const lines = steps.map((s, i) => `${i + 1}. ${s}`);
+  return [parsed.message, ...lines].filter(Boolean).join('\n');
 }
 
 export default function AskAIScreen() {
@@ -42,16 +52,27 @@ export default function AskAIScreen() {
         setConversationId(conv.id);
         const msgs = await listMessages(conv.id);
         if (!mounted) return;
-        const mapped: ChatMessageUI[] = (msgs || []).map((m: AIMessage) => ({
-          id: m.id,
-          text: m.content,
-          isUser: m.role === 'user',
-          timestamp: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        }));
+const mapped: ChatMessageUI[] = (msgs || []).map((m: AIMessage) => {
+          let text = m.content;
+          if (m.role !== 'user' && m.message_type === 'json') {
+            try {
+              const parsed = JSON.parse(m.content) as AIIntakeReply;
+              if (parsed && parsed.mode && parsed.message) {
+                text = renderAssistantText(parsed);
+              }
+            } catch {}
+          }
+          return {
+            id: m.id,
+            text,
+            isUser: m.role === 'user',
+            timestamp: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          };
+        });
         if (mapped.length === 0) {
           mapped.push({
             id: 'welcome',
-            text: "Namaste! I'm your legal advisor and government services assistant for Nepal. I help Nepali citizens navigate government processes, understand policies, and handle legal documentation.\n\nI learn about you over time to provide personalized advice. To get started, could you tell me what you need help with today?",
+text: 'Understood—tell me briefly what happened, when, and where.',
             isUser: false,
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           });
@@ -100,13 +121,13 @@ export default function AskAIScreen() {
       }
       // Persist user message
       await sendMessage(convId!, text);
-      // Generate and persist assistant reply via NVIDIA
-      const reply = await generateAIReply(convId!, text);
+// Generate concise intake reply (JSON) and persist
+      const { parsed, saved } = await generateIntakeReply(convId!, text);
       const uiReply: ChatMessageUI = {
-        id: reply.id,
-        text: reply.content,
+        id: saved.id,
+        text: renderAssistantText(parsed),
         isUser: false,
-        timestamp: new Date(reply.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        timestamp: new Date(saved.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
       setChatMessages(prev => [...prev, uiReply]);
     } catch (e) {
@@ -133,12 +154,12 @@ export default function AskAIScreen() {
   const handleClearChat = async () => {
     if (!conversationId) {
       // Nothing to clear; just reset UI
-      setChatMessages([{
-        id: 'welcome',
-        text: "Hello! I'm your legal advisor and government services assistant. I specialize in helping Indian citizens navigate government processes, understand policies, and handle legal documentation.\n\nI learn about you over time to provide personalized advice. To get started, could you tell me a bit about what you need help with today?",
-        isUser: false,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      }]);
+        setChatMessages([{
+          id: 'welcome',
+text: 'Understood—tell me briefly what happened, when, and where.',
+          isUser: false,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        }]);
       return;
     }
 
@@ -156,7 +177,7 @@ export default function AskAIScreen() {
               await clearConversation(conversationId);
               setChatMessages([{
                 id: 'welcome',
-                text: "Hello! I'm your legal advisor and government services assistant. I specialize in helping Indian citizens navigate government processes, understand policies, and handle legal documentation.\n\nI learn about you over time to provide personalized advice. To get started, could you tell me a bit about what you need help with today?",
+text: 'Understood—tell me briefly what happened, when, and where.',
                 isUser: false,
                 timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
               }]);
@@ -288,7 +309,7 @@ export default function AskAIScreen() {
               style={styles.textInput}
               value={message}
               onChangeText={setMessage}
-              placeholder="Ask me anything about government services..."
+placeholder="Briefly share what happened, when, and where"
               placeholderTextColor="#9ca3af"
               multiline
               maxLength={500}

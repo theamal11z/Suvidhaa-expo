@@ -1,8 +1,13 @@
 # Supabase Edge Functions
 
-This folder contains two Edge Functions to support Cloudinary uploads and NVIDIA LLM calls.
+This folder contains Edge Functions to support text extraction, Cloudinary uploads, and NVIDIA LLM calls.
 
 ## Functions
+
+- `extract-text`
+  - POST: `{ url: string }` OR `{ file: { name: string, mime: string, base64: string } }`
+  - Returns: `{ text: string }`
+  - Notes: Supports HTML/text and PDF extraction. Image OCR is not included by default.
 
 - `cloudinary-sign-upload`
   - POST: `{ folder?: string }`
@@ -41,6 +46,7 @@ supabase functions secrets set \
 
 ```bash
 # From the frontend/ directory
+supabase functions deploy extract-text --project-ref YOUR_PROJECT_REF
 supabase functions deploy cloudinary-sign-upload --project-ref YOUR_PROJECT_REF
 supabase functions deploy llm-proxy --project-ref YOUR_PROJECT_REF
 ```
@@ -50,6 +56,7 @@ supabase functions deploy llm-proxy --project-ref YOUR_PROJECT_REF
 ```bash
 supabase functions invoke cloudinary-sign-upload --no-verify-jwt --project-ref YOUR_PROJECT_REF --body '{"folder":"suvidhaa"}'
 
+supabase functions invoke extract-text --no-verify-jwt --project-ref YOUR_PROJECT_REF --body '{"url":"https://example.com"}'
 supabase functions invoke llm-proxy --no-verify-jwt --project-ref YOUR_PROJECT_REF --body '{"prompt":"Summarize: Hello world"}'
 ```
 

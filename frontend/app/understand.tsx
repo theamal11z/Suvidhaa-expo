@@ -9,32 +9,64 @@ import {
   StatusBar,
   TextInput,
   Alert,
+  Share,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
-import { uploadToCloudinary } from '../lib/cloudinary';
 import { supabase } from '../lib/supabase';
-import { insertDocument, insertSummary } from '../lib/db';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as FileSystem from 'expo-file-system';
+import { insertSummary } from '../lib/db';
 
 export default function UnderstandScreen() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const [documentUrl, setDocumentUrl] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [summary, setSummary] = useState('');
+  const [analyzeError, setAnalyzeError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [uploadedUrl, setUploadedUrl] = useState<string | null>(null);
-  const [pickedName, setPickedName] = useState<string | null>(null);
+  const [lastDocumentId, setLastDocumentId] = useState<string | null>(null);
+  // Local file selection (no Cloudinary upload)
+  const [localFileUri, setLocalFileUri] = useState<string | null>(null);
+  const [localFileName, setLocalFileName] = useState<string | null>(null);
+  const [localFileMime, setLocalFileMime] = useState<string | null>(null);
+
+  // Try to fetch readable text from a URL (HTML/text only)
+  const fetchUrlPreview = async (url: string): Promise<string | null> => {
+    try {
+      const res = await fetch(url, { method: 'GET' });
+      if (!res.ok) return null;
+      const ct = (res.headers.get('content-type') || '').toLowerCase();
+      if (ct.includes('application/pdf')) return null; // skip PDFs (client can't parse)
+      if (ct.startsWith('text/') || ct.includes('html')) {
+        const raw = await res.text();
+        const isHtml = ct.includes('html') || /<html[^>]*>/i.test(raw);
+        let text = raw;
+        if (isHtml) {
+          text = raw
+            .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, ' ')
+            .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ' ')
+            .replace(/<[^>]+>/g, ' ');
+        }
+        text = text.replace(/\s+/g, ' ').trim();
+        const max = 6000; // keep prompt manageable
+        if (text.length > max) text = text.slice(0, max) + '...';
+        return text;
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  };
 
   const handlePickAndUpload = async () => {
     try {
       setUploading(true);
-      setUploadedUrl(null);
-      setPickedName(null);
+      setLocalFileUri(null);
+      setLocalFileName(null);
+      setLocalFileMime(null);
       const res = await DocumentPicker.getDocumentAsync({
-        type: ['application/pdf', '*/*'],
+        type: ['application/pdf', 'image/*', '*/*'],
         multiple: false,
         copyToCacheDirectory: true,
       });
@@ -43,64 +75,123 @@ export default function UnderstandScreen() {
         return;
       }
       const asset = res.assets[0];
-      setPickedName(asset.name || 'document');
-
-      const uploadRes = await uploadToCloudinary({
-        uri: asset.uri,
-        name: asset.name ?? 'upload',
-        type: asset.mimeType ?? 'application/octet-stream',
-      });
-      setUploadedUrl(uploadRes.secure_url);
-      Alert.alert('Upload complete', 'File uploaded to Cloudinary successfully.');
+      setLocalFileUri(asset.uri);
+      setLocalFileName(asset.name || 'document');
+      setLocalFileMime(asset.mimeType ?? null);
+      Alert.alert('File selected', asset.name || 'document');
     } catch (e: any) {
       console.error(e);
-      Alert.alert('Upload failed', e?.message ?? 'Unknown error');
+      Alert.alert('Selection failed', e?.message ?? 'Unknown error');
     } finally {
       setUploading(false);
     }
   };
 
   const handleDocumentAnalysis = async () => {
-    const url = documentUrl.trim() || uploadedUrl;
+    let url = documentUrl.trim();
     if (!url) {
       Alert.alert('Error', 'Please enter a document URL or upload a document');
       return;
+    }
+    // Accept URLs without scheme by defaulting to https
+    if (!/^https?:\/\//i.test(url)) {
+      const tentative = `https://${url}`;
+      try {
+        // Validate
+        new URL(tentative);
+        url = tentative;
+      } catch {
+        Alert.alert('Invalid URL', 'Please enter a valid http(s) URL');
+        return;
+      }
     }
 
     try {
       setIsAnalyzing(true);
       setSummary('');
-      let documentId: string | null = null;
-      // Try to save the document reference first (best-effort)
+      setAnalyzeError(null);
+
+      // Extract text: prefer server-side edge function for PDFs/images/HTML
+      let extractedText: string | null = null;
       try {
-        const doc = await insertDocument({ url, type: 'pdf', cloudinary_public_id: null });
-        documentId = doc.id;
-      } catch (e) {
-        // Non-fatal if schema isn't ready yet
-        console.warn('insertDocument skipped or failed:', e);
+        if (localFileUri) {
+          // Read local file as base64 and send to extractor
+          const base64 = await FileSystem.readAsStringAsync(localFileUri, { encoding: FileSystem.EncodingType.Base64 });
+          const { data: exData, error: exErr } = await supabase.functions.invoke('extract-text', {
+            body: {
+              file: {
+                name: localFileName || 'document',
+                mime: localFileMime || 'application/octet-stream',
+                base64,
+              },
+            },
+          });
+          if (exErr) throw exErr;
+          extractedText = exData?.text || null;
+        } else if (url) {
+          const { data: exData, error: exErr } = await supabase.functions.invoke('extract-text', { body: { url } });
+          if (!exErr && exData?.text) {
+            extractedText = exData.text as string;
+          } else {
+            // Fallback: client-side fetch for HTML/text only
+            extractedText = await fetchUrlPreview(url);
+          }
+        }
+      } catch (ex) {
+        console.warn('extract-text failed, falling back to client fetch (HTML only).', ex);
+        if (url) extractedText = await fetchUrlPreview(url);
       }
-      // Call the NVIDIA proxy function via Supabase Edge Functions
+
+      // If nothing extracted, set error and bail to result screen
+      if (!extractedText || extractedText.trim().length === 0) {
+        setAnalyzeError('Could not extract text from this source. For PDFs or images, ensure the edge function "extract-text" is deployed.');
+        // Navigate to result screen with error state
+        router.push({
+          pathname: '/understand-result',
+          params: {
+            title: localFileName || url,
+            error: 'Extraction failed',
+          },
+        } as any);
+        return;
+      }
+
+      // Build messages using extracted text
+      const messages = [
+        { role: 'system', content: 'You are a concise policy summarizer for citizens. Summarize the provided document text and list key points.' },
+        { role: 'user', content: extractedText.slice(0, 12000) },
+      ];
+
       const { data, error } = await supabase.functions.invoke('llm-proxy', {
         body: {
-          prompt: `Summarize this document succinctly for a citizen audience and list key points. Document: ${url}`,
+          messages,
           temperature: 0.2,
           max_tokens: 700,
         },
       });
       if (error) throw error;
 
-      // NVIDIA chat completion style response
-      const content = data?.choices?.[0]?.message?.content ?? data?.result ?? JSON.stringify(data);
-      setSummary(String(content));
+      const pickContent = (resp: any): string => {
+        const c1 = resp?.choices?.[0]?.message?.content;
+        const c2 = resp?.result;
+        const c3 = typeof resp === 'string' ? resp : JSON.stringify(resp ?? {});
+        const out = String(c1 ?? c2 ?? c3);
+        return out;
+      };
+      const content = pickContent(data);
+      const text = String(content || '').trim();
 
-      // Try to persist summary (best-effort)
-      try {
-        await insertSummary({ document_id: documentId, summary_text: String(content) });
-      } catch (e) {
-        console.warn('insertSummary skipped or failed:', e);
-      }
+      // Navigate to dedicated result screen
+      router.push({
+        pathname: '/understand-result',
+        params: {
+          title: localFileName || url,
+          summary: text || '',
+        },
+      } as any);
     } catch (e: any) {
       console.error(e);
+      setAnalyzeError(e?.message ?? 'Analysis failed. Please try again later.');
       Alert.alert('Analysis failed', e?.message ?? 'Unknown error');
     } finally {
       setIsAnalyzing(false);
@@ -121,7 +212,7 @@ export default function UnderstandScreen() {
       <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
       
       {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
+      <View style={[styles.header, { paddingTop: 12 }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color="#111827" />
         </TouchableOpacity>
@@ -148,10 +239,10 @@ export default function UnderstandScreen() {
               <Ionicons name="cloud-upload" size={24} color="#2563eb" />
               <Text style={styles.uploadText}>{uploading ? 'Uploading…' : 'Upload PDF'}</Text>
             </TouchableOpacity>
-            {pickedName || uploadedUrl ? (
+            {(localFileName || localFileUri) ? (
               <Text style={{ textAlign: 'center', color: '#374151', marginBottom: 8 }}>
-                {pickedName ? `Selected: ${pickedName}` : null}
-                {uploadedUrl ? `\nUploaded to: ${uploadedUrl}` : null}
+                {localFileName ? `Selected: ${localFileName}` : null}
+                {localFileUri ? `\nLocal file ready` : null}
               </Text>
             ) : null}
             
@@ -187,6 +278,94 @@ export default function UnderstandScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* Summary Display (moved up so results are visible without scrolling) */}
+        {/* Results moved to separate screen; keep a lightweight status only */}
+        {isAnalyzing ? (
+          <View style={styles.summarySection}>
+            <View style={styles.summaryHeader}>
+              <Ionicons name="bulb" size={24} color="#f59e0b" />
+              <Text style={styles.summaryTitle}>Analyzing…</Text>
+            </View>
+            <View style={styles.summaryContent}>
+              <Text style={styles.summaryText}>Working on your document. You will be redirected to results.</Text>
+            </View>
+          </View>
+        ) : analyzeError ? (
+          <View style={styles.summarySection}>
+            <View style={styles.summaryHeader}>
+              <Ionicons name="alert-circle" size={24} color="#b91c1c" />
+              <Text style={styles.summaryTitle}>Analysis failed</Text>
+            </View>
+            <View style={styles.summaryContent}>
+              <Text style={[styles.summaryText, { color: '#b91c1c' }]}>{analyzeError}</Text>
+            </View>
+          </View>
+        ) : null}
+          <View style={styles.summarySection}>
+            <View style={styles.summaryHeader}>
+              <Ionicons name="bulb" size={24} color="#f59e0b" />
+              <Text style={styles.summaryTitle}>Policy Summary</Text>
+            </View>
+            
+            <View style={styles.summaryContent}>
+              <ScrollView style={styles.summaryScroll}>
+                {isAnalyzing ? (
+                  <Text style={styles.summaryText}>Analyzing the document…</Text>
+                ) : analyzeError ? (
+                  <Text style={[styles.summaryText, { color: '#b91c1c' }]}>{analyzeError}</Text>
+                ) : summary ? (
+                  <Text style={styles.summaryText}>{summary}</Text>
+                ) : (
+                  <Text style={styles.summaryText}>No summary available.</Text>
+                )}
+              </ScrollView>
+            </View>
+            
+            <View style={styles.summaryActions}>
+              <TouchableOpacity 
+                style={styles.actionButton}
+                onPress={async () => {
+                  try {
+                    if (!summary) return;
+                    await insertSummary({ document_id: lastDocumentId ?? null, summary_text: summary });
+                    Alert.alert('Saved', 'Summary saved successfully.');
+                  } catch (e: any) {
+                    console.warn('Manual save failed:', e);
+                    Alert.alert('Save failed', e?.message ?? 'Please try again.');
+                  }
+                }}
+                disabled={!summary}
+              >
+                <Ionicons name="bookmark-outline" size={20} color="#2563eb" />
+                <Text style={styles.actionButtonText}>Save</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.actionButton}
+                onPress={async () => {
+                  if (!summary) return;
+                  try {
+                    await Share.share({ message: `Policy Summary\n\n${summary}` });
+                  } catch (e) {
+                    // Ignore
+                  }
+                }}
+                disabled={!summary}
+              >
+                <Ionicons name="share-outline" size={20} color="#2563eb" />
+                <Text style={styles.actionButtonText}>Share</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.actionButton}
+                onPress={() => router.push('/ask-ai' as any)}
+              >
+                <Ionicons name="chatbubble-outline" size={20} color="#2563eb" />
+                <Text style={styles.actionButtonText}>Ask Questions</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
         {/* Quick Topics */}
         <View style={styles.quickTopicsSection}>
           <Text style={styles.sectionTitle}>Quick Topics</Text>
@@ -196,46 +375,13 @@ export default function UnderstandScreen() {
           
           <View style={styles.topicsGrid}>
             {quickTopics.map((topic, index) => (
-              <TouchableOpacity key={index} style={styles.topicCard}>
+              <TouchableOpacity key={index} style={styles.topicCard} onPress={() => router.push('/ask-ai' as any)}>
                 <Text style={styles.topicText}>{topic}</Text>
                 <Ionicons name="arrow-forward" size={16} color="#2563eb" />
               </TouchableOpacity>
             ))}
           </View>
         </View>
-
-        {/* Summary Display */}
-        {summary ? (
-          <View style={styles.summarySection}>
-            <View style={styles.summaryHeader}>
-              <Ionicons name="bulb" size={24} color="#f59e0b" />
-              <Text style={styles.summaryTitle}>Policy Summary</Text>
-            </View>
-            
-            <View style={styles.summaryContent}>
-              <ScrollView style={styles.summaryScroll}>
-                <Text style={styles.summaryText}>{summary}</Text>
-              </ScrollView>
-            </View>
-            
-            <View style={styles.summaryActions}>
-              <TouchableOpacity style={styles.actionButton}>
-                <Ionicons name="bookmark-outline" size={20} color="#2563eb" />
-                <Text style={styles.actionButtonText}>Save</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity style={styles.actionButton}>
-                <Ionicons name="share-outline" size={20} color="#2563eb" />
-                <Text style={styles.actionButtonText}>Share</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity style={styles.actionButton}>
-                <Ionicons name="chatbubble-outline" size={20} color="#2563eb" />
-                <Text style={styles.actionButtonText}>Ask Questions</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        ) : null}
       </ScrollView>
     </SafeAreaView>
   );

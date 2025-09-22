@@ -56,18 +56,6 @@ export default function QuickActionScreen() {
         { name: 'FAQ', route: '/faq', icon: 'help-circle' },
       ],
     },
-    {
-      title: 'Popular Services',
-      icon: 'star',
-      color: '#f59e0b',
-      bgColor: '#fef3c7',
-      actions: [
-        { name: 'Aadhaar Services', route: '/aadhaar', icon: 'finger-print' },
-        { name: 'PAN Services', route: '/pan', icon: 'card-outline' },
-        { name: 'Passport', route: '/passport', icon: 'airplane' },
-        { name: 'Driving License', route: '/license', icon: 'car-sport' },
-      ],
-    },
   ];
 
   const handleActionPress = (action: any) => {

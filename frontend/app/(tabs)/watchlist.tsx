@@ -30,9 +30,24 @@ export default function WatchlistScreen() {
       try {
         setLoading(true);
         setError(null);
+
+        // Ensure we only load the current user's personal watchlist
+        const { data: authData, error: authErr } = await supabase.auth.getUser();
+        if (authErr) throw authErr;
+        const userId = authData?.user?.id;
+
+        if (!userId) {
+          if (!mounted) return;
+          setWatch([]);
+          setTickets({});
+          setLatestUpdate({});
+          return;
+        }
+
         const { data: wl, error: wErr } = await supabase
           .from('watchlist')
           .select('*')
+          .eq('user_id', userId)
           .order('created_at', { ascending: false })
           .limit(50);
         if (wErr) throw wErr;

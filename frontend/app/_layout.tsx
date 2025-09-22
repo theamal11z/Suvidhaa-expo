@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import React, { useEffect } from 'react';
 import { useRouter } from 'expo-router';
 import { supabase } from '../lib/supabase';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 export default function RootLayout() {
   const router = useRouter();
@@ -32,7 +33,7 @@ export default function RootLayout() {
   }, [router]);
 
   return (
-    <>
+    <SafeAreaProvider>
       <StatusBar style="auto" />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="index" />
@@ -48,6 +49,6 @@ export default function RootLayout() {
         <Stack.Screen name="ask-ai" />
         <Stack.Screen name="quick-action" />
       </Stack>
-    </>
+    </SafeAreaProvider>
   );
 }
