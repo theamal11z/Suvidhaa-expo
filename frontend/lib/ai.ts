@@ -282,8 +282,8 @@ export async function extractAndStoreUserInfo(userMessage: string, aiResponse: s
     }
   });
   
-  // Extract interests/topics they're asking about
-  const topics = ['passport', 'visa', 'pan card', 'aadhaar', 'gst', 'income tax', 'property', 'marriage', 'divorce', 'education', 'scholarship'];
+  // Extract interests/topics they're asking about (Nepal-specific)
+  const topics = ['passport', 'e-passport', 'citizenship', 'pan', 'ird', 'vat', 'tax', 'nagarik', 'ssf', 'property', 'land', 'marriage', 'divorce', 'education', 'scholarship', 'driving license', 'smart card'];
   topics.forEach(topic => {
     if (message.includes(topic)) {
       setUserMemory(`interested_in_${topic}`, true, 'context', new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)).catch(console.error);

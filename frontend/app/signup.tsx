@@ -69,7 +69,11 @@ export default function SignupScreen() {
 
       // If email confirmation is enabled, session will be null until confirmed
       if (!data.session) {
-        Alert.alert('Verify your email', 'We have sent a verification link to your email. Please confirm to sign in.');
+        // Navigate to email verification screen
+        router.push({
+          pathname: '/email-verification',
+          params: { email: formData.email.trim() }
+        });
       }
       // Auth listener in _layout will handle navigation once session exists
     } catch (e: any) {

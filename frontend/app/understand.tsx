@@ -9,23 +9,19 @@ import {
   StatusBar,
   TextInput,
   Alert,
-  Share,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
 import { supabase } from '../lib/supabase';
 import * as FileSystem from 'expo-file-system';
-import { insertSummary } from '../lib/db';
 
 export default function UnderstandScreen() {
   const router = useRouter();
   const [documentUrl, setDocumentUrl] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [summary, setSummary] = useState('');
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [lastDocumentId, setLastDocumentId] = useState<string | null>(null);
   // Local file selection (no Cloudinary upload)
   const [localFileUri, setLocalFileUri] = useState<string | null>(null);
   const [localFileName, setLocalFileName] = useState<string | null>(null);
@@ -89,12 +85,13 @@ export default function UnderstandScreen() {
 
   const handleDocumentAnalysis = async () => {
     let url = documentUrl.trim();
-    if (!url) {
+    // Require either a URL or a selected local file
+    if (!url && !localFileUri) {
       Alert.alert('Error', 'Please enter a document URL or upload a document');
       return;
     }
-    // Accept URLs without scheme by defaulting to https
-    if (!/^https?:\/\//i.test(url)) {
+    // Accept URLs without scheme by defaulting to https (only if provided)
+    if (url && !/^https?:\/\//i.test(url)) {
       const tentative = `https://${url}`;
       try {
         // Validate
@@ -108,7 +105,6 @@ export default function UnderstandScreen() {
 
     try {
       setIsAnalyzing(true);
-      setSummary('');
       setAnalyzeError(null);
 
       // Extract text: prefer server-side edge function for PDFs/images/HTML
@@ -301,70 +297,6 @@ export default function UnderstandScreen() {
             </View>
           </View>
         ) : null}
-          <View style={styles.summarySection}>
-            <View style={styles.summaryHeader}>
-              <Ionicons name="bulb" size={24} color="#f59e0b" />
-              <Text style={styles.summaryTitle}>Policy Summary</Text>
-            </View>
-            
-            <View style={styles.summaryContent}>
-              <ScrollView style={styles.summaryScroll}>
-                {isAnalyzing ? (
-                  <Text style={styles.summaryText}>Analyzing the document…</Text>
-                ) : analyzeError ? (
-                  <Text style={[styles.summaryText, { color: '#b91c1c' }]}>{analyzeError}</Text>
-                ) : summary ? (
-                  <Text style={styles.summaryText}>{summary}</Text>
-                ) : (
-                  <Text style={styles.summaryText}>No summary available.</Text>
-                )}
-              </ScrollView>
-            </View>
-            
-            <View style={styles.summaryActions}>
-              <TouchableOpacity 
-                style={styles.actionButton}
-                onPress={async () => {
-                  try {
-                    if (!summary) return;
-                    await insertSummary({ document_id: lastDocumentId ?? null, summary_text: summary });
-                    Alert.alert('Saved', 'Summary saved successfully.');
-                  } catch (e: any) {
-                    console.warn('Manual save failed:', e);
-                    Alert.alert('Save failed', e?.message ?? 'Please try again.');
-                  }
-                }}
-                disabled={!summary}
-              >
-                <Ionicons name="bookmark-outline" size={20} color="#2563eb" />
-                <Text style={styles.actionButtonText}>Save</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={styles.actionButton}
-                onPress={async () => {
-                  if (!summary) return;
-                  try {
-                    await Share.share({ message: `Policy Summary\n\n${summary}` });
-                  } catch (e) {
-                    // Ignore
-                  }
-                }}
-                disabled={!summary}
-              >
-                <Ionicons name="share-outline" size={20} color="#2563eb" />
-                <Text style={styles.actionButtonText}>Share</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={styles.actionButton}
-                onPress={() => router.push('/ask-ai' as any)}
-              >
-                <Ionicons name="chatbubble-outline" size={20} color="#2563eb" />
-                <Text style={styles.actionButtonText}>Ask Questions</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
 
         {/* Quick Topics */}
         <View style={styles.quickTopicsSection}>

@@ -667,11 +667,11 @@ CREATE INDEX IF NOT EXISTS idx_tickets_title_trgm ON public.tickets USING gin (t
 -- Sample Data (Optional - for development)
 -- ===================================================================
 
--- Sample policies
+-- Sample policies (Nepal-specific)
 INSERT INTO public.policies (title, summary, category, department, status) VALUES 
-  ('Digital India Initiative', 'Comprehensive program to transform India into a digitally empowered society', 'Technology', 'Ministry of Electronics & IT', 'active'),
-  ('Pradhan Mantri Awas Yojana', 'Housing for All by 2024 scheme providing affordable housing', 'Housing', 'Ministry of Housing & Urban Affairs', 'active'),
-  ('Swachh Bharat Mission', 'Clean India campaign focusing on sanitation and waste management', 'Environment', 'Ministry of Water & Sanitation', 'active'),
-  ('Ayushman Bharat', 'National health protection scheme covering 10 crore families', 'Healthcare', 'Ministry of Health & Family Welfare', 'active'),
-  ('Make in India', 'Initiative to promote manufacturing and create jobs in India', 'Economy', 'Ministry of Commerce & Industry', 'active')
+  ('Digital Nepal Framework', 'Strategic framework to drive Nepal\'s digital transformation across key sectors', 'Technology', 'Ministry of Communication and Information Technology', 'active'),
+  ('Prime Minister Employment Program (PMEP)', 'Employment generation program providing short-term jobs to unemployed citizens', 'Employment', 'Ministry of Labour, Employment and Social Security', 'active'),
+  ('National Health Insurance Program', 'Health insurance scheme to improve healthcare access for Nepali citizens', 'Healthcare', 'Ministry of Health and Population', 'active'),
+  ('Clean Nepal Initiative', 'Nationwide sanitation and waste management improvement campaign', 'Environment', 'Ministry of Urban Development', 'active'),
+  ('Made in Nepal Promotion', 'Policy measures to strengthen domestic manufacturing and entrepreneurship', 'Economy', 'Ministry of Industry, Commerce and Supplies', 'active')
 ON CONFLICT (slug) DO NOTHING;

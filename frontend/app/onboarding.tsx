@@ -12,6 +12,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { supabase } from '../lib/supabase';
 
 const { width } = Dimensions.get('window');
 
@@ -48,6 +50,17 @@ export default function OnboardingScreen() {
     },
   ];
 
+  const completeOnboarding = async () => {
+    try {
+      await AsyncStorage.setItem('suvidhaa-onboarding-complete', 'true');
+      const { data } = await supabase.auth.getSession();
+      if (data.session) router.replace('/(tabs)');
+      else router.replace('/login');
+    } catch {
+      router.replace('/login');
+    }
+  };
+
   const handleNext = () => {
     if (currentPage < onboardingSlides.length - 1) {
       const nextPage = currentPage + 1;
@@ -57,12 +70,12 @@ export default function OnboardingScreen() {
         animated: true,
       });
     } else {
-      router.push('/login');
+      completeOnboarding();
     }
   };
 
   const handleSkip = () => {
-    router.push('/login');
+    completeOnboarding();
   };
 
   const handlePrevious = () => {

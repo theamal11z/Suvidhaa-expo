@@ -8,12 +8,15 @@ import {
   SafeAreaView,
   StatusBar,
   Switch,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useRouter } from 'expo-router';
+import { logoutUser } from '../../utils/auth';
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -24,6 +27,7 @@ export default function ProfileScreen() {
   const [notificationsEnabled, setNotificationsEnabled] = React.useState(true);
   const [darkModeEnabled, setDarkModeEnabled] = React.useState(false);
   const [language, setLanguage] = useState<string>('English');
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   
   // User statistics
   const [userStats, setUserStats] = useState({
@@ -132,9 +136,40 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    // Nav handled by _layout auth listener
+  const handleLogout = () => {
+    Alert.alert(
+      'Logout',
+      'Are you sure you want to logout? You will need to sign in again to access your account.',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Logout',
+          style: 'destructive',
+          onPress: performLogout,
+        },
+      ]
+    );
+  };
+
+  const performLogout = async () => {
+    try {
+      setIsLoggingOut(true);
+      const { error } = await supabase.auth.signOut();
+      
+      if (error) throw error;
+      
+      // Navigation handled by auth listener in _layout
+    } catch (error: any) {
+      setIsLoggingOut(false);
+      Alert.alert(
+        'Logout Failed',
+        error?.message || 'Failed to logout. Please try again.',
+        [{ text: 'OK' }]
+      );
+    }
   };
 
   return (
@@ -235,9 +270,22 @@ export default function ProfileScreen() {
         ))}
 
         {/* Logout Button */}
-        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-          <Ionicons name="log-out-outline" size={20} color="#ef4444" />
-          <Text style={styles.logoutText}>Logout</Text>
+        <TouchableOpacity 
+          style={[styles.logoutButton, isLoggingOut && styles.logoutButtonDisabled]} 
+          onPress={handleLogout}
+          disabled={isLoggingOut}
+        >
+          {isLoggingOut ? (
+            <>
+              <ActivityIndicator size="small" color="#ef4444" />
+              <Text style={[styles.logoutText, styles.loggingOutText]}>Logging out...</Text>
+            </>
+          ) : (
+            <>
+              <Ionicons name="log-out-outline" size={20} color="#ef4444" />
+              <Text style={styles.logoutText}>Logout</Text>
+            </>
+          )}
         </TouchableOpacity>
 
         {/* App Version */}
@@ -419,10 +467,16 @@ const styles = StyleSheet.create({
     marginTop: 20,
     marginBottom: 30,
   },
+  logoutButtonDisabled: {
+    opacity: 0.7,
+  },
   logoutText: {
     fontSize: 16,
     fontWeight: '600',
     color: '#ef4444',
+    marginLeft: 8,
+  },
+  loggingOutText: {
     marginLeft: 8,
   },
   versionContainer: {

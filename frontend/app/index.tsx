@@ -7,6 +7,7 @@ import {
   SafeAreaView,
   StatusBar,
   Dimensions,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -19,9 +20,17 @@ export default function Index() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [notificationCount, setNotificationCount] = useState(0);
+  const [isInitializing, setIsInitializing] = useState(true);
 
   useEffect(() => {
+    // Add a small delay to prevent flash before navigation
+    const timer = setTimeout(() => {
+      setIsInitializing(false);
+    }, 500);
+
     fetchNotificationCount();
+
+    return () => clearTimeout(timer);
   }, []);
 
   const fetchNotificationCount = async () => {
@@ -87,6 +96,17 @@ export default function Index() {
       route: '/ask-ai',
     },
   ];
+
+  // Show loading screen while initializing
+  if (isInitializing) {
+    return (
+      <SafeAreaView style={[styles.container, styles.loadingContainer]}>
+        <StatusBar barStyle="light-content" backgroundColor="#2563eb" />
+        <ActivityIndicator size="large" color="#ffffff" />
+        <Text style={styles.loadingText}>Loading...</Text>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -317,5 +337,15 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#9ca3af',
     marginTop: 4,
+  },
+  loadingContainer: {
+    backgroundColor: '#2563eb',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    color: '#ffffff',
+    fontSize: 16,
+    marginTop: 16,
   },
 });

@@ -1,5 +1,5 @@
 {
-  "name": "frontend",
+  "name": "suvidhaa",
   "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {
@@ -9,6 +9,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
+    "assets:generate": "node ./scripts/generate-assets.js",
     "supabase:deploy": "supabase functions deploy",
     "supabase:deploy:ai": "supabase functions deploy llm-proxy",
     "supabase:deploy:cloudinary": "supabase functions deploy cloudinary-sign-upload",
@@ -57,6 +58,7 @@
     "@types/react": "~19.0.10",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~9.2.0",
+    "jimp": "^0.22.10",
     "supabase": "^2.40.7",
     "typescript": "~5.8.3"
   },

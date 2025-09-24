@@ -16,7 +16,7 @@ export default function SplashScreen() {
   const scaleAnim = new Animated.Value(0.8);
 
   useEffect(() => {
-    // Animate logo entrance
+    // Animate logo entrance; routing is handled by root layout
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
@@ -29,13 +29,6 @@ export default function SplashScreen() {
         useNativeDriver: true,
       }),
     ]).start();
-
-    // Navigate to onboarding after 3 seconds
-    const timer = setTimeout(() => {
-      router.push('/onboarding');
-    }, 3000);
-
-    return () => clearTimeout(timer);
   }, []);
 
   return (
@@ -78,7 +71,7 @@ export default function SplashScreen() {
       
       {/* Footer */}
       <View style={styles.footer}>
-        <Text style={styles.footerText}>Government of India</Text>
+        <Text style={styles.footerText}>Government of Nepal</Text>
         <Text style={styles.versionText}>Version 1.0.0</Text>
       </View>
     </SafeAreaView>

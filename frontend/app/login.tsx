@@ -116,7 +116,10 @@ export default function LoginScreen() {
               </View>
             </View>
 
-            <TouchableOpacity style={styles.forgotPasswordButton}>
+            <TouchableOpacity 
+              style={styles.forgotPasswordButton}
+              onPress={() => router.push('/forgot-password')}
+            >
               <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
             </TouchableOpacity>
 
@@ -161,13 +164,13 @@ export default function LoginScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* DigiLocker Integration */}
+            {/* Nagarik App Placeholder */}
             <TouchableOpacity 
               style={styles.digilockerButton}
-              onPress={() => handleSocialLogin('DigiLocker')}
+              onPress={() => handleSocialLogin('Nagarik App')}
             >
               <Ionicons name="shield" size={20} color="#2563eb" />
-              <Text style={styles.digilockerText}>Sign in with DigiLocker</Text>
+              <Text style={styles.digilockerText}>Sign in with Nagarik App</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>
